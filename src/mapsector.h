@@ -62,7 +62,6 @@ public:
 
 	bool empty() const { return m_blocks.empty(); }
 
-	int size() const { return m_blocks.size(); }
 protected:
 
 	// The pile of MapBlocks

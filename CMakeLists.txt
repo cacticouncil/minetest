@@ -1,16 +1,22 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 2.6)
+
+if(${CMAKE_VERSION} STREQUAL "2.8.2")
+	# Bug http://vtk.org/Bug/view.php?id=11020
+	message(WARNING "CMake/CPack version 2.8.2 will not create working .deb packages!")
+endif()
 
 # This can be read from ${PROJECT_NAME} after project() is called
 project(minetest)
 set(PROJECT_NAME_CAPITALIZED "Minetest")
 
+# Works only for cmake 3.1 and greater
 set(CMAKE_CXX_STANDARD 11)
 set(GCC_MINIMUM_VERSION "4.8")
 set(CLANG_MINIMUM_VERSION "3.4")
 
 # Also remember to set PROTOCOL_VERSION in network/networkprotocol.h when releasing
 set(VERSION_MAJOR 5)
-set(VERSION_MINOR 5)
+set(VERSION_MINOR 1)
 set(VERSION_PATCH 0)
 set(VERSION_EXTRA "" CACHE STRING "Stuff to append to version string")
 
@@ -43,7 +49,6 @@ set(RUN_IN_PLACE ${DEFAULT_RUN_IN_PLACE} CACHE BOOL
 
 set(BUILD_CLIENT TRUE CACHE BOOL "Build client")
 set(BUILD_SERVER FALSE CACHE BOOL "Build server")
-set(BUILD_UNITTESTS TRUE CACHE BOOL "Build unittests")
 
 
 set(WARN_ALL TRUE CACHE BOOL "Enable -Wall for Release build")
@@ -59,29 +64,6 @@ set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/cmake/Modules/")
 
 # This is done here so that relative search paths are more reasonable
 find_package(Irrlicht)
-if(BUILD_CLIENT AND NOT IRRLICHT_FOUND)
-	message(FATAL_ERROR "Irrlicht is required to build the client, but it was not found.")
-elseif(NOT IRRLICHT_INCLUDE_DIR)
-	message(FATAL_ERROR "Irrlicht headers are required to build the server, but none found.")
-endif()
-
-include(CheckSymbolExists)
-set(CMAKE_REQUIRED_INCLUDES ${IRRLICHT_INCLUDE_DIR})
-unset(HAS_FORKED_IRRLICHT CACHE)
-check_symbol_exists(IRRLICHT_VERSION_MT "IrrCompileConfig.h" HAS_FORKED_IRRLICHT)
-if(NOT HAS_FORKED_IRRLICHT)
-	string(CONCAT EXPLANATION_MSG
-		"Irrlicht found, but it is not Minetest's Irrlicht fork. "
-		"The Minetest team has forked Irrlicht to make their own customizations. "
-		"It can be found here: https://github.com/minetest/irrlicht")
-	if(BUILD_CLIENT)
-		message(FATAL_ERROR "${EXPLANATION_MSG}\n"
-			"Building the client with upstream Irrlicht is no longer possible.")
-	else()
-		message(WARNING "${EXPLANATION_MSG}\n"
-			"The server can still be built with upstream Irrlicht but this is DISCOURAGED.")
-	endif()
-endif()
 
 
 # Installation
@@ -120,7 +102,7 @@ elseif(UNIX) # Linux, BSD etc
 		set(XDG_APPS_DIR "${CMAKE_INSTALL_PREFIX}/share/applications")
 		set(APPDATADIR "${CMAKE_INSTALL_PREFIX}/share/metainfo")
 		set(ICONDIR "${CMAKE_INSTALL_PREFIX}/share/icons")
-		set(LOCALEDIR "${CMAKE_INSTALL_PREFIX}/share/locale")
+		set(LOCALEDIR "${CMAKE_INSTALL_PREFIX}/share/${PROJECT_NAME}/locale")
 	endif()
 endif()
 
@@ -182,9 +164,9 @@ if(RUN_IN_PLACE)
 	install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/textures/texture_packs_here.txt" DESTINATION "${SHAREDIR}/textures")
 endif()
 
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/games/minetest_game" DESTINATION "${SHAREDIR}/games/"
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/games/minetest_game" DESTINATION "${SHAREDIR}/games/" 
 	COMPONENT "SUBGAME_MINETEST_GAME" OPTIONAL PATTERN ".git*" EXCLUDE )
-install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/games/devtest" DESTINATION "${SHAREDIR}/games/"
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/games/minimal" DESTINATION "${SHAREDIR}/games/" 
 	COMPONENT "SUBGAME_MINIMAL" OPTIONAL PATTERN ".git*" EXCLUDE )
 
 if(BUILD_CLIENT)
@@ -196,9 +178,10 @@ if(BUILD_CLIENT)
 	endif()
 endif()
 
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/fonts" DESTINATION "${SHAREDIR}")
+
 install(FILES "README.md" DESTINATION "${DOCDIR}" COMPONENT "Docs")
 install(FILES "doc/lua_api.txt" DESTINATION "${DOCDIR}" COMPONENT "Docs")
-install(FILES "doc/client_lua_api.txt" DESTINATION "${DOCDIR}" COMPONENT "Docs")
 install(FILES "doc/menu_lua_api.txt" DESTINATION "${DOCDIR}" COMPONENT "Docs")
 install(FILES "doc/texture_packs.txt" DESTINATION "${DOCDIR}" COMPONENT "Docs")
 install(FILES "doc/world_format.txt" DESTINATION "${DOCDIR}" COMPONENT "Docs")
@@ -224,8 +207,8 @@ find_package(GMP REQUIRED)
 find_package(Json REQUIRED)
 find_package(Lua REQUIRED)
 
-# JsonCpp doesn't compile well on GCC 4.8
-if(NOT USE_SYSTEM_JSONCPP)
+# JsonCPP doesn't compile well on GCC 4.8
+if(NOT ENABLE_SYSTEM_JSONCPP)
 	set(GCC_MINIMUM_VERSION "4.9")
 endif()
 
@@ -234,7 +217,7 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
 		message(FATAL_ERROR "Insufficient gcc version, found ${CMAKE_CXX_COMPILER_VERSION}. "
 			"Version ${GCC_MINIMUM_VERSION} or higher is required.")
 	endif()
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "(Apple)?Clang")
+elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
 	if (CMAKE_CXX_COMPILER_VERSION VERSION_LESS "${CLANG_MINIMUM_VERSION}")
 		message(FATAL_ERROR "Insufficient clang version, found ${CMAKE_CXX_COMPILER_VERSION}. "
 			"Version ${CLANG_MINIMUM_VERSION} or higher is required.")
@@ -265,15 +248,15 @@ cpack_add_component(Docs
 
 cpack_add_component(SUBGAME_MINETEST_GAME
 	DISPLAY_NAME "Minetest Game"
-	DESCRIPTION "The default game bundled in the Minetest engine. Mainly used as a modding base."
-	GROUP "Games"
+	DESCRIPTION "The official subgame for the Minetest engine, that can easily extended by mods."
+	GROUP "Subgames"
 )
 
 cpack_add_component(SUBGAME_MINIMAL
-	DISPLAY_NAME "Development Test"
-	DESCRIPTION "A basic testing environment used for engine development and sometimes for testing mods."
+	DISPLAY_NAME "Minimal development test"
+	DESCRIPTION "A minimal subgame helping to develop the engine."
 	DISABLED #DISABLED does not mean it is disabled, and is just not selected by default.
-	GROUP "Games"
+	GROUP "Subgames"
 )
 
 cpack_add_component_group(Subgames
@@ -294,20 +277,19 @@ if(WIN32)
 		set(CPACK_GENERATOR ZIP)
 
 	else()
-		set(CPACK_GENERATOR WIX)
+		set(CPACK_GENERATOR WIX ZIP)
 		set(CPACK_PACKAGE_NAME "${PROJECT_NAME_CAPITALIZED}")
-		set(CPACK_PACKAGE_INSTALL_DIRECTORY ".")
+		set(CPACK_PACKAGE_INSTALL_DIRECTORY "${PROJECT_NAME_CAPITALIZED}")
 		set(CPACK_PACKAGE_EXECUTABLES ${PROJECT_NAME} "${PROJECT_NAME_CAPITALIZED}")
 		set(CPACK_CREATE_DESKTOP_LINKS ${PROJECT_NAME})
-		set(CPACK_PACKAGING_INSTALL_PREFIX "/${PROJECT_NAME_CAPITALIZED}")
 
 		set(CPACK_WIX_PRODUCT_ICON "${CMAKE_CURRENT_SOURCE_DIR}/misc/minetest-icon.ico")
-		# Supported languages can be found at
+		# Supported languages can be found at 
 		# http://wixtoolset.org/documentation/manual/v3/wixui/wixui_localization.html
 		#set(CPACK_WIX_CULTURES "ar-SA,bg-BG,ca-ES,hr-HR,cs-CZ,da-DK,nl-NL,en-US,et-EE,fi-FI,fr-FR,de-DE")
 		set(CPACK_WIX_UI_BANNER "${CMAKE_CURRENT_SOURCE_DIR}/misc/CPACK_WIX_UI_BANNER.BMP")
 		set(CPACK_WIX_UI_DIALOG "${CMAKE_CURRENT_SOURCE_DIR}/misc/CPACK_WIX_UI_DIALOG.BMP")
-
+		
 		set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/doc/lgpl-2.1.txt")
 
 		# The correct way would be to include both x32 and x64 into one installer
@@ -343,3 +325,4 @@ if(DOXYGEN_FOUND)
 		COMMENT "Generating API documentation with Doxygen" VERBATIM
 	)
 endif()
+

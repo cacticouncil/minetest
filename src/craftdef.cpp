@@ -1066,8 +1066,8 @@ public:
 	}
 	virtual void registerCraft(CraftDefinition *def, IGameDef *gamedef)
 	{
-		TRACESTREAM(<< "registerCraft: registering craft definition: "
-				<< def->dump() << std::endl);
+		verbosestream << "registerCraft: registering craft definition: "
+				<< def->dump() << std::endl;
 		m_craft_defs[(int) CRAFT_HASH_TYPE_UNHASHED][0].push_back(def);
 
 		CraftInput input;

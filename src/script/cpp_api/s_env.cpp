@@ -86,7 +86,7 @@ void ScriptApiEnv::player_event(ServerActiveObject *player, const std::string &t
 void ScriptApiEnv::initializeEnvironment(ServerEnvironment *env)
 {
 	SCRIPTAPI_PRECHECKHEADER
-	verbosestream << "ScriptApiEnv: Environment initialized" << std::endl;
+	verbosestream << "scriptapi_add_environment" << std::endl;
 	setEnv(env);
 
 	/*

@@ -207,7 +207,7 @@ void TileDef::serialize(std::ostream &os, u16 protocol_version) const
 	u8 version = 6;
 	writeU8(os, version);
 
-	os << serializeString16(name);
+	os << serializeString(name);
 	animation.serialize(os, version);
 	bool has_scale = scale > 0;
 	u16 flags = 0;
@@ -241,7 +241,7 @@ void TileDef::deSerialize(std::istream &is, u8 contentfeatures_version,
 	int version = readU8(is);
 	if (version < 6)
 		throw SerializationError("unsupported TileDef version");
-	name = deSerializeString16(is);
+	name = deSerializeString(is);
 	animation.deSerialize(is, version);
 	u16 flags = readU16(is);
 	backface_culling = flags & TILE_FLAG_BACKFACE_CULLING;
@@ -266,6 +266,9 @@ void TextureSettings::readSettings()
 {
 	connected_glass                = g_settings->getBool("connected_glass");
 	opaque_water                   = g_settings->getBool("opaque_water");
+	bool enable_shaders            = g_settings->getBool("enable_shaders");
+	bool enable_bumpmapping        = g_settings->getBool("enable_bumpmapping");
+	bool enable_parallax_occlusion = g_settings->getBool("enable_parallax_occlusion");
 	bool smooth_lighting           = g_settings->getBool("smooth_lighting");
 	enable_mesh_cache              = g_settings->getBool("enable_mesh_cache");
 	enable_minimap                 = g_settings->getBool("enable_minimap");
@@ -278,6 +281,8 @@ void TextureSettings::readSettings()
 	if (smooth_lighting)
 		enable_mesh_cache = false;
 
+	use_normal_texture = enable_shaders &&
+		(enable_bumpmapping || enable_parallax_occlusion);
 	if (leaves_style_str == "fancy") {
 		leaves_style = LEAVES_FANCY;
 	} else if (leaves_style_str == "simple") {
@@ -310,18 +315,6 @@ void TextureSettings::readSettings()
 ContentFeatures::ContentFeatures()
 {
 	reset();
-}
-
-ContentFeatures::~ContentFeatures()
-{
-#ifndef SERVER
-	for (u16 j = 0; j < 6; j++) {
-		delete tiles[j].layers[0].frames;
-		delete tiles[j].layers[1].frames;
-	}
-	for (u16 j = 0; j < CF_SPECIAL_COUNT; j++)
-		delete special_tiles[j].layers[0].frames;
-#endif
 }
 
 void ContentFeatures::reset()
@@ -360,7 +353,7 @@ void ContentFeatures::reset()
 		i = TileDef();
 	for (auto &j : tiledef_special)
 		j = TileDef();
-	alpha = ALPHAMODE_OPAQUE;
+	alpha = 255;
 	post_effect_color = video::SColor(0, 0, 0, 0);
 	param_type = CPT_NONE;
 	param_type_2 = CPT2_NONE;
@@ -375,12 +368,9 @@ void ContentFeatures::reset()
 	floodable = false;
 	rightclickable = true;
 	leveled = 0;
-	leveled_max = LEVELED_MAX;
 	liquid_type = LIQUID_NONE;
 	liquid_alternative_flowing = "";
-	liquid_alternative_flowing_id = CONTENT_IGNORE;
 	liquid_alternative_source = "";
-	liquid_alternative_source_id = CONTENT_IGNORE;
 	liquid_viscosity = 0;
 	liquid_renewable = true;
 	liquid_range = LIQUID_LEVEL_MAX+1;
@@ -405,41 +395,16 @@ void ContentFeatures::reset()
 	node_dig_prediction = "air";
 }
 
-void ContentFeatures::setAlphaFromLegacy(u8 legacy_alpha)
-{
-	// No special handling for nodebox/mesh here as it doesn't make sense to
-	// throw warnings when the server is too old to support the "correct" way
-	switch (drawtype) {
-	case NDT_NORMAL:
-		alpha = legacy_alpha == 255 ? ALPHAMODE_OPAQUE : ALPHAMODE_CLIP;
-		break;
-	case NDT_LIQUID:
-	case NDT_FLOWINGLIQUID:
-		alpha = legacy_alpha == 255 ? ALPHAMODE_OPAQUE : ALPHAMODE_BLEND;
-		break;
-	default:
-		alpha = legacy_alpha == 255 ? ALPHAMODE_CLIP : ALPHAMODE_BLEND;
-		break;
-	}
-}
-
-u8 ContentFeatures::getAlphaForLegacy() const
-{
-	// This is so simple only because 255 and 0 mean wildly different things
-	// depending on drawtype...
-	return alpha == ALPHAMODE_OPAQUE ? 255 : 0;
-}
-
 void ContentFeatures::serialize(std::ostream &os, u16 protocol_version) const
 {
 	const u8 version = CONTENTFEATURES_VERSION;
 	writeU8(os, version);
 
 	// general
-	os << serializeString16(name);
+	os << serializeString(name);
 	writeU16(os, groups.size());
 	for (const auto &group : groups) {
-		os << serializeString16(group.first);
+		os << serializeString(group.first);
 		writeS16(os, group.second);
 	}
 	writeU8(os, param_type);
@@ -447,7 +412,7 @@ void ContentFeatures::serialize(std::ostream &os, u16 protocol_version) const
 
 	// visual
 	writeU8(os, drawtype);
-	os << serializeString16(mesh);
+	os << serializeString(mesh);
 	writeF32(os, visual_scale);
 	writeU8(os, 6);
 	for (const TileDef &td : tiledef)
@@ -458,11 +423,11 @@ void ContentFeatures::serialize(std::ostream &os, u16 protocol_version) const
 	for (const TileDef &td : tiledef_special) {
 		td.serialize(os, protocol_version);
 	}
-	writeU8(os, getAlphaForLegacy());
+	writeU8(os, alpha);
 	writeU8(os, color.getRed());
 	writeU8(os, color.getGreen());
 	writeU8(os, color.getBlue());
-	os << serializeString16(palette_name);
+	os << serializeString(palette_name);
 	writeU8(os, waving);
 	writeU8(os, connect_sides);
 	writeU16(os, connects_to_ids.size());
@@ -490,8 +455,8 @@ void ContentFeatures::serialize(std::ostream &os, u16 protocol_version) const
 
 	// liquid
 	writeU8(os, liquid_type);
-	os << serializeString16(liquid_alternative_flowing);
-	os << serializeString16(liquid_alternative_source);
+	os << serializeString(liquid_alternative_flowing);
+	os << serializeString(liquid_alternative_source);
 	writeU8(os, liquid_viscosity);
 	writeU8(os, liquid_renewable);
 	writeU8(os, liquid_range);
@@ -512,9 +477,22 @@ void ContentFeatures::serialize(std::ostream &os, u16 protocol_version) const
 	writeU8(os, legacy_facedir_simple);
 	writeU8(os, legacy_wallmounted);
 
-	os << serializeString16(node_dig_prediction);
-	writeU8(os, leveled_max);
-	writeU8(os, alpha);
+	os << serializeString(node_dig_prediction);
+}
+
+void ContentFeatures::correctAlpha(TileDef *tiles, int length)
+{
+	// alpha == 0 means that the node is using texture alpha
+	if (alpha == 0 || alpha == 255)
+		return;
+
+	for (int i = 0; i < length; i++) {
+		if (tiles[i].name.empty())
+			continue;
+		std::stringstream s;
+		s << tiles[i].name << "^[noalpha^[opacity:" << ((int)alpha);
+		tiles[i].name = s.str();
+	}
 }
 
 void ContentFeatures::deSerialize(std::istream &is)
@@ -525,11 +503,11 @@ void ContentFeatures::deSerialize(std::istream &is)
 		throw SerializationError("unsupported ContentFeatures version");
 
 	// general
-	name = deSerializeString16(is);
+	name = deSerializeString(is);
 	groups.clear();
 	u32 groups_size = readU16(is);
 	for (u32 i = 0; i < groups_size; i++) {
-		std::string name = deSerializeString16(is);
+		std::string name = deSerializeString(is);
 		int value = readS16(is);
 		groups[name] = value;
 	}
@@ -538,7 +516,7 @@ void ContentFeatures::deSerialize(std::istream &is)
 
 	// visual
 	drawtype = (enum NodeDrawType) readU8(is);
-	mesh = deSerializeString16(is);
+	mesh = deSerializeString(is);
 	visual_scale = readF32(is);
 	if (readU8(is) != 6)
 		throw SerializationError("unsupported tile count");
@@ -550,11 +528,11 @@ void ContentFeatures::deSerialize(std::istream &is)
 		throw SerializationError("unsupported CF_SPECIAL_COUNT");
 	for (TileDef &td : tiledef_special)
 		td.deSerialize(is, version, drawtype);
-	setAlphaFromLegacy(readU8(is));
+	alpha = readU8(is);
 	color.setRed(readU8(is));
 	color.setGreen(readU8(is));
 	color.setBlue(readU8(is));
-	palette_name = deSerializeString16(is);
+	palette_name = deSerializeString(is);
 	waving = readU8(is);
 	connect_sides = readU8(is);
 	u16 connects_to_size = readU16(is);
@@ -584,8 +562,8 @@ void ContentFeatures::deSerialize(std::istream &is)
 
 	// liquid
 	liquid_type = (enum LiquidType) readU8(is);
-	liquid_alternative_flowing = deSerializeString16(is);
-	liquid_alternative_source = deSerializeString16(is);
+	liquid_alternative_flowing = deSerializeString(is);
+	liquid_alternative_source = deSerializeString(is);
 	liquid_viscosity = readU8(is);
 	liquid_renewable = readU8(is);
 	liquid_range = readU8(is);
@@ -607,17 +585,7 @@ void ContentFeatures::deSerialize(std::istream &is)
 	legacy_wallmounted = readU8(is);
 
 	try {
-		node_dig_prediction = deSerializeString16(is);
-
-		u8 tmp = readU8(is);
-		if (is.eof()) /* readU8 doesn't throw exceptions so we have to do this */
-			throw SerializationError("");
-		leveled_max = tmp;
-
-		tmp = readU8(is);
-		if (is.eof())
-			throw SerializationError("");
-		alpha = static_cast<enum AlphaMode>(tmp);
+		node_dig_prediction = deSerializeString(is);
 	} catch(SerializationError &e) {};
 }
 
@@ -632,9 +600,8 @@ static void fillTileAttribs(ITextureSource *tsrc, TileLayer *layer,
 	layer->material_type = material_type;
 
 	bool has_scale = tiledef.scale > 0;
-	bool use_autoscale = tsettings.autoscale_mode == AUTOSCALE_FORCE ||
-		(tsettings.autoscale_mode == AUTOSCALE_ENABLE && !has_scale);
-	if (use_autoscale) {
+	if (((tsettings.autoscale_mode == AUTOSCALE_ENABLE) && !has_scale) ||
+			(tsettings.autoscale_mode == AUTOSCALE_FORCE)) {
 		auto texture_size = layer->texture->getOriginalSize();
 		float base_size = tsettings.node_texture_size;
 		float size = std::fmin(texture_size.Width, texture_size.Height);
@@ -647,6 +614,10 @@ static void fillTileAttribs(ITextureSource *tsrc, TileLayer *layer,
 	if (!tile.world_aligned)
 		layer->scale = 1;
 
+	// Normal texture and shader flags texture
+	if (tsettings.use_normal_texture) {
+		layer->normal_texture = tsrc->getNormalTexture(tiledef.name);
+	}
 	layer->flags_texture = tsrc->getShaderFlagsTexture(layer->normal_texture ? true : false);
 
 	// Material flags
@@ -682,7 +653,7 @@ static void fillTileAttribs(ITextureSource *tsrc, TileLayer *layer,
 	} else {
 		std::ostringstream os(std::ios::binary);
 		if (!layer->frames) {
-			layer->frames = new std::vector<FrameSpec>();
+			layer->frames = std::make_shared<std::vector<FrameSpec>>();
 		}
 		layer->frames->resize(frame_count);
 
@@ -703,56 +674,9 @@ static void fillTileAttribs(ITextureSource *tsrc, TileLayer *layer,
 		}
 	}
 }
+#endif
 
-bool ContentFeatures::textureAlphaCheck(ITextureSource *tsrc, const TileDef *tiles, int length)
-{
-	video::IVideoDriver *driver = RenderingEngine::get_video_driver();
-	static thread_local bool long_warning_printed = false;
-	std::set<std::string> seen;
-
-	for (int i = 0; i < length; i++) {
-		if (seen.find(tiles[i].name) != seen.end())
-			continue;
-		seen.insert(tiles[i].name);
-
-		// Load the texture and see if there's any transparent pixels
-		video::ITexture *texture = tsrc->getTexture(tiles[i].name);
-		video::IImage *image = driver->createImage(texture,
-			core::position2d<s32>(0, 0), texture->getOriginalSize());
-		if (!image)
-			continue;
-		core::dimension2d<u32> dim = image->getDimension();
-		bool ok = true;
-		for (u16 x = 0; x < dim.Width; x++) {
-			for (u16 y = 0; y < dim.Height; y++) {
-				if (image->getPixel(x, y).getAlpha() < 255) {
-					ok = false;
-					goto break_loop;
-				}
-			}
-		}
-
-break_loop:
-		image->drop();
-		if (ok)
-			continue;
-		warningstream << "Texture \"" << tiles[i].name << "\" of "
-			<< name << " has transparency, assuming "
-			"use_texture_alpha = \"clip\"." << std::endl;
-		if (!long_warning_printed) {
-			warningstream << "  This warning can be a false-positive if "
-				"unused pixels in the texture are transparent. However if "
-				"it is meant to be transparent, you *MUST* update the "
-				"nodedef and set use_texture_alpha = \"clip\"! This "
-				"compatibility code will be removed in a few releases."
-				<< std::endl;
-			long_warning_printed = true;
-		}
-		return true;
-	}
-	return false;
-}
-
+#ifndef SERVER
 bool isWorldAligned(AlignStyle style, WorldAlignMode mode, NodeDrawType drawtype)
 {
 	if (style == ALIGN_STYLE_WORLD)
@@ -793,33 +717,31 @@ void ContentFeatures::updateTextures(ITextureSource *tsrc, IShaderSource *shdsrc
 
 	bool is_liquid = false;
 
-	if (alpha == ALPHAMODE_LEGACY_COMPAT) {
-		// Before working with the alpha mode, resolve any legacy kludges
-		alpha = textureAlphaCheck(tsrc, tdef, 6) ? ALPHAMODE_CLIP : ALPHAMODE_OPAQUE;
-	}
-
-	MaterialType material_type = alpha == ALPHAMODE_OPAQUE ?
-		TILE_MATERIAL_OPAQUE : (alpha == ALPHAMODE_CLIP ? TILE_MATERIAL_BASIC :
-		TILE_MATERIAL_ALPHA);
+	u8 material_type = (alpha == 255) ?
+		TILE_MATERIAL_BASIC : TILE_MATERIAL_ALPHA;
 
 	switch (drawtype) {
 	default:
 	case NDT_NORMAL:
+		material_type = (alpha == 255) ?
+			TILE_MATERIAL_OPAQUE : TILE_MATERIAL_ALPHA;
 		solidness = 2;
 		break;
 	case NDT_AIRLIKE:
 		solidness = 0;
 		break;
 	case NDT_LIQUID:
+		assert(liquid_type == LIQUID_SOURCE);
 		if (tsettings.opaque_water)
-			alpha = ALPHAMODE_OPAQUE;
+			alpha = 255;
 		solidness = 1;
 		is_liquid = true;
 		break;
 	case NDT_FLOWINGLIQUID:
+		assert(liquid_type == LIQUID_FLOWING);
 		solidness = 0;
 		if (tsettings.opaque_water)
-			alpha = ALPHAMODE_OPAQUE;
+			alpha = 255;
 		is_liquid = true;
 		break;
 	case NDT_GLASSLIKE:
@@ -872,15 +794,12 @@ void ContentFeatures::updateTextures(ITextureSource *tsrc, IShaderSource *shdsrc
 	case NDT_MESH:
 	case NDT_NODEBOX:
 		solidness = 0;
-		if (waving == 1) {
+		if (waving == 1)
 			material_type = TILE_MATERIAL_WAVING_PLANTS;
-		} else if (waving == 2) {
+		else if (waving == 2)
 			material_type = TILE_MATERIAL_WAVING_LEAVES;
-		} else if (waving == 3) {
-			material_type = alpha == ALPHAMODE_OPAQUE ?
-				TILE_MATERIAL_WAVING_LIQUID_OPAQUE : (alpha == ALPHAMODE_CLIP ?
-				TILE_MATERIAL_WAVING_LIQUID_BASIC : TILE_MATERIAL_WAVING_LIQUID_TRANSPARENT);
-		}
+		else if (waving == 3)
+			material_type = TILE_MATERIAL_WAVING_LIQUID_BASIC;
 		break;
 	case NDT_TORCHLIKE:
 	case NDT_SIGNLIKE:
@@ -894,19 +813,23 @@ void ContentFeatures::updateTextures(ITextureSource *tsrc, IShaderSource *shdsrc
 	}
 
 	if (is_liquid) {
+		// Vertex alpha is no longer supported, correct if necessary.
+		correctAlpha(tdef, 6);
+		correctAlpha(tdef_overlay, 6);
+		correctAlpha(tdef_spec, CF_SPECIAL_COUNT);
+
 		if (waving == 3) {
-			material_type = alpha == ALPHAMODE_OPAQUE ?
-				TILE_MATERIAL_WAVING_LIQUID_OPAQUE : (alpha == ALPHAMODE_CLIP ?
-				TILE_MATERIAL_WAVING_LIQUID_BASIC : TILE_MATERIAL_WAVING_LIQUID_TRANSPARENT);
+			material_type = (alpha == 255) ? TILE_MATERIAL_WAVING_LIQUID_OPAQUE :
+				TILE_MATERIAL_WAVING_LIQUID_TRANSPARENT;
 		} else {
-			material_type = alpha == ALPHAMODE_OPAQUE ? TILE_MATERIAL_LIQUID_OPAQUE :
+			material_type = (alpha == 255) ? TILE_MATERIAL_LIQUID_OPAQUE :
 				TILE_MATERIAL_LIQUID_TRANSPARENT;
 		}
 	}
 
 	u32 tile_shader = shdsrc->getShader("nodes_shader", material_type, drawtype);
 
-	MaterialType overlay_material = material_type;
+	u8 overlay_material = material_type;
 	if (overlay_material == TILE_MATERIAL_OPAQUE)
 		overlay_material = TILE_MATERIAL_BASIC;
 	else if (overlay_material == TILE_MATERIAL_LIQUID_OPAQUE)
@@ -927,7 +850,7 @@ void ContentFeatures::updateTextures(ITextureSource *tsrc, IShaderSource *shdsrc
 					tdef[j].backface_culling, tsettings);
 	}
 
-	MaterialType special_material = material_type;
+	u8 special_material = material_type;
 	if (drawtype == NDT_PLANTLIKE_ROOTED) {
 		if (waving == 1)
 			special_material = TILE_MATERIAL_WAVING_PLANTS;
@@ -944,8 +867,7 @@ void ContentFeatures::updateTextures(ITextureSource *tsrc, IShaderSource *shdsrc
 
 	if (param_type_2 == CPT2_COLOR ||
 			param_type_2 == CPT2_COLORED_FACEDIR ||
-			param_type_2 == CPT2_COLORED_WALLMOUNTED ||
-			param_type_2 == CPT2_COLORED_DEGROTATE)
+			param_type_2 == CPT2_COLORED_WALLMOUNTED)
 		palette = tsrc->getPalette(palette_name);
 
 	if (drawtype == NDT_MESH && !mesh.empty()) {
@@ -1382,56 +1304,60 @@ void NodeDefManager::updateAliases(IItemDefManager *idef)
 	}
 }
 
-void NodeDefManager::applyTextureOverrides(const std::vector<TextureOverride> &overrides)
+void NodeDefManager::applyTextureOverrides(const std::string &override_filepath)
 {
 	infostream << "NodeDefManager::applyTextureOverrides(): Applying "
-		"overrides to textures" << std::endl;
+		"overrides to textures from " << override_filepath << std::endl;
 
-	for (const TextureOverride& texture_override : overrides) {
+	std::ifstream infile(override_filepath.c_str());
+	std::string line;
+	int line_c = 0;
+	while (std::getline(infile, line)) {
+		line_c++;
+		// Also trim '\r' on DOS-style files
+		line = trim(line);
+		if (line.empty())
+			continue;
+
+		std::vector<std::string> splitted = str_split(line, ' ');
+		if (splitted.size() != 3) {
+			errorstream << override_filepath
+				<< ":" << line_c << " Could not apply texture override \""
+				<< line << "\": Syntax error" << std::endl;
+			continue;
+		}
+
 		content_t id;
-		if (!getId(texture_override.id, id))
+		if (!getId(splitted[0], id))
 			continue; // Ignore unknown node
 
 		ContentFeatures &nodedef = m_content_features[id];
 
-		// Override tiles
-		if (texture_override.hasTarget(OverrideTarget::TOP))
-			nodedef.tiledef[0].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::BOTTOM))
-			nodedef.tiledef[1].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::RIGHT))
-			nodedef.tiledef[2].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::LEFT))
-			nodedef.tiledef[3].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::BACK))
-			nodedef.tiledef[4].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::FRONT))
-			nodedef.tiledef[5].name = texture_override.texture;
-
-
-		// Override special tiles, if applicable
-		if (texture_override.hasTarget(OverrideTarget::SPECIAL_1))
-			nodedef.tiledef_special[0].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::SPECIAL_2))
-			nodedef.tiledef_special[1].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::SPECIAL_3))
-			nodedef.tiledef_special[2].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::SPECIAL_4))
-			nodedef.tiledef_special[3].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::SPECIAL_5))
-			nodedef.tiledef_special[4].name = texture_override.texture;
-
-		if (texture_override.hasTarget(OverrideTarget::SPECIAL_6))
-			nodedef.tiledef_special[5].name = texture_override.texture;
+		if (splitted[1] == "top")
+			nodedef.tiledef[0].name = splitted[2];
+		else if (splitted[1] == "bottom")
+			nodedef.tiledef[1].name = splitted[2];
+		else if (splitted[1] == "right")
+			nodedef.tiledef[2].name = splitted[2];
+		else if (splitted[1] == "left")
+			nodedef.tiledef[3].name = splitted[2];
+		else if (splitted[1] == "back")
+			nodedef.tiledef[4].name = splitted[2];
+		else if (splitted[1] == "front")
+			nodedef.tiledef[5].name = splitted[2];
+		else if (splitted[1] == "all" || splitted[1] == "*")
+			for (TileDef &i : nodedef.tiledef)
+				i.name = splitted[2];
+		else if (splitted[1] == "sides")
+			for (int i = 2; i < 6; i++)
+				nodedef.tiledef[i].name = splitted[2];
+		else {
+			errorstream << override_filepath
+				<< ":" << line_c << " Could not apply texture override \""
+				<< line << "\": Unknown node side \""
+				<< splitted[1] << "\"" << std::endl;
+			continue;
+		}
 	}
 }
 
@@ -1478,7 +1404,7 @@ void NodeDefManager::serialize(std::ostream &os, u16 protocol_version) const
 		// strict version incompatibilities
 		std::ostringstream wrapper_os(std::ios::binary);
 		f->serialize(wrapper_os, protocol_version);
-		os2<<serializeString16(wrapper_os.str());
+		os2<<serializeString(wrapper_os.str());
 
 		// must not overflow
 		u16 next = count + 1;
@@ -1486,7 +1412,7 @@ void NodeDefManager::serialize(std::ostream &os, u16 protocol_version) const
 		count++;
 	}
 	writeU16(os, count);
-	os << serializeString32(os2.str());
+	os << serializeLongString(os2.str());
 }
 
 
@@ -1497,13 +1423,13 @@ void NodeDefManager::deSerialize(std::istream &is)
 	if (version != 1)
 		throw SerializationError("unsupported NodeDefinitionManager version");
 	u16 count = readU16(is);
-	std::istringstream is2(deSerializeString32(is), std::ios::binary);
+	std::istringstream is2(deSerializeLongString(is), std::ios::binary);
 	ContentFeatures f;
 	for (u16 n = 0; n < count; n++) {
 		u16 i = readU16(is2);
 
 		// Read it from the string wrapper
-		std::string wrapper = deSerializeString16(is2);
+		std::string wrapper = deSerializeString(is2);
 		std::istringstream wrapper_is(wrapper, std::ios::binary);
 		f.deSerialize(wrapper_is);
 
@@ -1532,22 +1458,18 @@ void NodeDefManager::deSerialize(std::istream &is)
 			m_content_features.resize((u32)(i) + 1);
 		m_content_features[i] = f;
 		addNameIdMapping(i, f.name);
-		TRACESTREAM(<< "NodeDef: deserialized " << f.name << std::endl);
+		verbosestream << "deserialized " << f.name << std::endl;
 
 		getNodeBoxUnion(f.selection_box, f, &m_selection_box_union);
 		fixSelectionBoxIntUnion();
 	}
-
-	// Since liquid_alternative_flowing_id and liquid_alternative_source_id
-	// are not sent, resolve them client-side too.
-	resolveCrossrefs();
 }
 
 
-void NodeDefManager::addNameIdMapping(content_t i, const std::string &name)
+void NodeDefManager::addNameIdMapping(content_t i, std::string name)
 {
 	m_name_id_mapping.set(i, name);
-	m_name_id_mapping_with_aliases.emplace(name, i);
+	m_name_id_mapping_with_aliases.insert(std::make_pair(name, i));
 }
 
 
@@ -1601,28 +1523,15 @@ void NodeDefManager::resetNodeResolveState()
 	m_pending_resolve_callbacks.clear();
 }
 
-static void removeDupes(std::vector<content_t> &list)
-{
-	std::sort(list.begin(), list.end());
-	auto new_end = std::unique(list.begin(), list.end());
-	list.erase(new_end, list.end());
-}
-
-void NodeDefManager::resolveCrossrefs()
+void NodeDefManager::mapNodeboxConnections()
 {
 	for (ContentFeatures &f : m_content_features) {
-		if (f.liquid_type != LIQUID_NONE || f.drawtype == NDT_LIQUID || f.drawtype == NDT_FLOWINGLIQUID) {
-			f.liquid_alternative_flowing_id = getId(f.liquid_alternative_flowing);
-			f.liquid_alternative_source_id = getId(f.liquid_alternative_source);
-			continue;
-		}
 		if (f.drawtype != NDT_NODEBOX || f.node_box.type != NODEBOX_CONNECTED)
 			continue;
 
 		for (const std::string &name : f.connects_to) {
 			getIds(name, f.connects_to_ids);
 		}
-		removeDupes(f.connects_to_ids);
 	}
 }
 
@@ -1676,7 +1585,8 @@ bool NodeDefManager::nodeboxConnects(MapNode from, MapNode to,
 
 NodeResolver::NodeResolver()
 {
-	reset();
+	m_nodenames.reserve(16);
+	m_nnlistsizes.reserve(4);
 }
 
 
@@ -1684,18 +1594,6 @@ NodeResolver::~NodeResolver()
 {
 	if (!m_resolve_done && m_ndef)
 		m_ndef->cancelNodeResolveCallback(this);
-}
-
-
-void NodeResolver::cloneTo(NodeResolver *res) const
-{
-	FATAL_ERROR_IF(!m_resolve_done, "NodeResolver can only be cloned"
-		" after resolving has completed");
-	/* We don't actually do anything significant. Since the node resolving has
-	 * already completed, the class that called us will already have the
-	 * resolved IDs in its data structures (which it copies on its own) */
-	res->m_ndef = m_ndef;
-	res->m_resolve_done = true;
 }
 
 
@@ -1778,17 +1676,4 @@ bool NodeResolver::getIdsFromNrBacklog(std::vector<content_t> *result_out,
 	}
 
 	return success;
-}
-
-void NodeResolver::reset(bool resolve_done)
-{
-	m_nodenames.clear();
-	m_nodenames_idx = 0;
-	m_nnlistsizes.clear();
-	m_nnlistsizes_idx = 0;
-
-	m_resolve_done = resolve_done;
-
-	m_nodenames.reserve(16);
-	m_nnlistsizes.reserve(4);
 }

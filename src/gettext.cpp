@@ -217,10 +217,7 @@ void init_gettext(const char *path, const std::string &configured_language,
 #endif
 #endif
 
-	std::string name = lowercase(PROJECT_NAME);
-	infostream << "Gettext: domainname=\"" << name
-		<< "\" path=\"" << path << "\"" << std::endl;
-
+	static std::string name = lowercase(PROJECT_NAME);
 	bindtextdomain(name.c_str(), path);
 	textdomain(name.c_str());
 

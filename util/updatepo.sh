@@ -49,7 +49,6 @@ cd ..
 # --package-name
 potfile=po/minetest.pot
 xgettext --package-name=minetest \
-	--add-comments='~' \
 	--sort-by-file \
 	--add-location=file \
 	--keyword=N_ \
@@ -58,7 +57,6 @@ xgettext --package-name=minetest \
 	--keyword=fgettext_ne \
 	--keyword=strgettext \
 	--keyword=wstrgettext \
-	--keyword=core.gettext \
 	--keyword=showTranslatedStatusText \
 	--output $potfile \
 	--from-code=utf-8 \

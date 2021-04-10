@@ -17,7 +17,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 
-#include "IrrCompileConfig.h"
 #include "guiChatConsole.h"
 #include "chat.h"
 #include "client/client.h"
@@ -75,9 +74,7 @@ GUIChatConsole::GUIChatConsole(
 		m_background_color.setBlue(clamp_u8(myround(console_color.Z)));
 	}
 
-	u16 chat_font_size = g_settings->getU16("chat_font_size");
-	m_font = g_fontengine->getFont(chat_font_size != 0 ?
-		chat_font_size : FONT_SIZE_UNSPECIFIED, FM_Mono);
+	m_font = g_fontengine->getFont(FONT_SIZE_UNSPECIFIED, FM_Mono);
 
 	if (!m_font) {
 		errorstream << "GUIChatConsole: Unable to load mono font" << std::endl;
@@ -135,6 +132,11 @@ void GUIChatConsole::closeConsoleAtOnce()
 	closeConsole();
 	m_height = 0;
 	recalculateConsolePosition();
+}
+
+f32 GUIChatConsole::getDesiredHeight() const
+{
+	return m_desired_height_fraction;
 }
 
 void GUIChatConsole::replaceAndAddToHistory(const std::wstring &line)
@@ -327,6 +329,7 @@ void GUIChatConsole::drawText()
 				tmp->draw(
 					fragment.text,
 					destrect,
+					video::SColor(255, 255, 255, 255),
 					false,
 					false,
 					&AbsoluteClippingRect);
@@ -540,7 +543,7 @@ bool GUIChatConsole::OnEvent(const SEvent& event)
 			if (prompt.getCursorLength() <= 0)
 				return true;
 			std::wstring wselected = prompt.getSelection();
-			std::string selected = wide_to_utf8(wselected);
+			std::string selected(wselected.begin(), wselected.end());
 			Environment->getOSOperator()->copyToClipboard(selected.c_str());
 			return true;
 		}
@@ -570,7 +573,7 @@ bool GUIChatConsole::OnEvent(const SEvent& event)
 			if (prompt.getCursorLength() <= 0)
 				return true;
 			std::wstring wselected = prompt.getSelection();
-			std::string selected = wide_to_utf8(wselected);
+			std::string selected(wselected.begin(), wselected.end());
 			Environment->getOSOperator()->copyToClipboard(selected.c_str());
 			prompt.cursorOperation(
 				ChatPrompt::CURSOROP_DELETE,
@@ -607,7 +610,13 @@ bool GUIChatConsole::OnEvent(const SEvent& event)
 			prompt.nickCompletion(names, backwards);
 			return true;
 		} else if (!iswcntrl(event.KeyInput.Char) && !event.KeyInput.Control) {
-			prompt.input(event.KeyInput.Char);
+			#if defined(__linux__) && (IRRLICHT_VERSION_MAJOR == 1 && IRRLICHT_VERSION_MINOR < 9)
+				wchar_t wc = L'_';
+				mbtowc( &wc, (char *) &event.KeyInput.Char, sizeof(event.KeyInput.Char) );
+				prompt.input(wc);
+			#else
+				prompt.input(event.KeyInput.Char);
+			#endif
 			return true;
 		}
 	}
@@ -619,13 +628,6 @@ bool GUIChatConsole::OnEvent(const SEvent& event)
 			m_chat_backend->scroll(rows);
 		}
 	}
-#if (IRRLICHT_VERSION_MT_REVISION >= 2)
-	else if(event.EventType == EET_STRING_INPUT_EVENT)
-	{
-		prompt.input(std::wstring(event.StringInput.Str->c_str()));
-		return true;
-	}
-#endif
 
 	return Parent ? Parent->OnEvent(event) : false;
 }

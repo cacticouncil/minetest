@@ -19,13 +19,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include <cassert>
 #include <json/json.h>
-#include "convert_json.h"
 #include "database-files.h"
+#include "content_sao.h"
 #include "remoteplayer.h"
 #include "settings.h"
 #include "porting.h"
 #include "filesys.h"
-#include "server/player_sao.h"
 #include "util/string.h"
 
 // !!! WARNING !!!
@@ -37,116 +36,29 @@ PlayerDatabaseFiles::PlayerDatabaseFiles(const std::string &savedir) : m_savedir
 	fs::CreateDir(m_savedir);
 }
 
-void PlayerDatabaseFiles::deSerialize(RemotePlayer *p, std::istream &is,
-	 const std::string &playername, PlayerSAO *sao)
-{
-	Settings args("PlayerArgsEnd");
-
-	if (!args.parseConfigLines(is)) {
-		throw SerializationError("PlayerArgsEnd of player " + playername + " not found!");
-	}
-
-	p->m_dirty = true;
-	//args.getS32("version"); // Version field value not used
-	const std::string &name = args.get("name");
-	strlcpy(p->m_name, name.c_str(), PLAYERNAME_SIZE);
-
-	if (sao) {
-		try {
-			sao->setHPRaw(args.getU16("hp"));
-		} catch(SettingNotFoundException &e) {
-			sao->setHPRaw(PLAYER_MAX_HP_DEFAULT);
-		}
-
-		try {
-			sao->setBasePosition(args.getV3F("position"));
-		} catch (SettingNotFoundException &e) {}
-
-		try {
-			sao->setLookPitch(args.getFloat("pitch"));
-		} catch (SettingNotFoundException &e) {}
-		try {
-			sao->setPlayerYaw(args.getFloat("yaw"));
-		} catch (SettingNotFoundException &e) {}
-
-		try {
-			sao->setBreath(args.getU16("breath"), false);
-		} catch (SettingNotFoundException &e) {}
-
-		try {
-			const std::string &extended_attributes = args.get("extended_attributes");
-			std::istringstream iss(extended_attributes);
-			Json::CharReaderBuilder builder;
-			builder.settings_["collectComments"] = false;
-			std::string errs;
-
-			Json::Value attr_root;
-			Json::parseFromStream(builder, iss, &attr_root, &errs);
-
-			const Json::Value::Members attr_list = attr_root.getMemberNames();
-			for (const auto &it : attr_list) {
-				Json::Value attr_value = attr_root[it];
-				sao->getMeta().setString(it, attr_value.asString());
-			}
-			sao->getMeta().setModified(false);
-		} catch (SettingNotFoundException &e) {}
-	}
-
-	try {
-		p->inventory.deSerialize(is);
-	} catch (SerializationError &e) {
-		errorstream << "Failed to deserialize player inventory. player_name="
-			<< name << " " << e.what() << std::endl;
-	}
-
-	if (!p->inventory.getList("craftpreview") && p->inventory.getList("craftresult")) {
-		// Convert players without craftpreview
-		p->inventory.addList("craftpreview", 1);
-
-		bool craftresult_is_preview = true;
-		if(args.exists("craftresult_is_preview"))
-			craftresult_is_preview = args.getBool("craftresult_is_preview");
-		if(craftresult_is_preview)
-		{
-			// Clear craftresult
-			p->inventory.getList("craftresult")->changeItem(0, ItemStack());
-		}
-	}
-}
-
-void PlayerDatabaseFiles::serialize(RemotePlayer *p, std::ostream &os)
+void PlayerDatabaseFiles::serialize(std::ostringstream &os, RemotePlayer *player)
 {
 	// Utilize a Settings object for storing values
-	Settings args("PlayerArgsEnd");
+	Settings args;
 	args.setS32("version", 1);
-	args.set("name", p->m_name);
+	args.set("name", player->getName());
 
-	PlayerSAO *sao = p->getPlayerSAO();
-	// This should not happen
-	sanity_check(sao);
-	args.setU16("hp", sao->getHP());
-	args.setV3F("position", sao->getBasePosition());
-	args.setFloat("pitch", sao->getLookPitch());
-	args.setFloat("yaw", sao->getRotation().Y);
-	args.setU16("breath", sao->getBreath());
+	sanity_check(player->getPlayerSAO());
+	args.setU16("hp", player->getPlayerSAO()->getHP());
+	args.setV3F("position", player->getPlayerSAO()->getBasePosition());
+	args.setFloat("pitch", player->getPlayerSAO()->getLookPitch());
+	args.setFloat("yaw", player->getPlayerSAO()->getRotation().Y);
+	args.setU16("breath", player->getPlayerSAO()->getBreath());
 
 	std::string extended_attrs;
-	{
-		// serializeExtraAttributes
-		Json::Value json_root;
-
-		const StringMap &attrs = sao->getMeta().getStrings();
-		for (const auto &attr : attrs) {
-			json_root[attr.first] = attr.second;
-		}
-
-		extended_attrs = fastWriteJson(json_root);
-	}
+	player->serializeExtraAttributes(extended_attrs);
 	args.set("extended_attributes", extended_attrs);
 
 	args.writeLines(os);
 
-	p->inventory.serialize(os);
+	os << "PlayerArgsEnd\n";
+
+	player->inventory.serialize(os);
 }
 
 void PlayerDatabaseFiles::savePlayer(RemotePlayer *player)
@@ -171,7 +83,7 @@ void PlayerDatabaseFiles::savePlayer(RemotePlayer *player)
 			return;
 		}
 
-		deSerialize(&testplayer, is, path, NULL);
+		testplayer.deSerialize(is, path, NULL);
 		is.close();
 		if (strcmp(testplayer.getName(), player->getName()) == 0) {
 			path_found = true;
@@ -189,7 +101,7 @@ void PlayerDatabaseFiles::savePlayer(RemotePlayer *player)
 
 	// Open and serialize file
 	std::ostringstream ss(std::ios_base::binary);
-	serialize(player, ss);
+	serialize(ss, player);
 	if (!fs::safeWriteToFile(path, ss.str())) {
 		infostream << "Failed to write " << path << std::endl;
 	}
@@ -209,7 +121,7 @@ bool PlayerDatabaseFiles::removePlayer(const std::string &name)
 		if (!is.good())
 			continue;
 
-		deSerialize(&temp_player, is, path, NULL);
+		temp_player.deSerialize(is, path, NULL);
 		is.close();
 
 		if (temp_player.getName() == name) {
@@ -235,7 +147,7 @@ bool PlayerDatabaseFiles::loadPlayer(RemotePlayer *player, PlayerSAO *sao)
 		if (!is.good())
 			continue;
 
-		deSerialize(player, is, path, sao);
+		player->deSerialize(is, path, sao);
 		is.close();
 
 		if (player->getName() == player_to_load)
@@ -268,7 +180,7 @@ void PlayerDatabaseFiles::listPlayers(std::vector<std::string> &res)
 		// Null env & dummy peer_id
 		PlayerSAO playerSAO(NULL, &player, 15789, false);
 
-		deSerialize(&player, is, "", &playerSAO);
+		player.deSerialize(is, "", &playerSAO);
 		is.close();
 
 		res.emplace_back(player.getName());

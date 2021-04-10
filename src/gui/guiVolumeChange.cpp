@@ -19,7 +19,6 @@ OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 #include "guiVolumeChange.h"
 #include "debug.h"
-#include "guiButton.h"
 #include "serialization.h"
 #include <string>
 #include <IGUICheckBox.h>
@@ -38,10 +37,9 @@ const int ID_soundMuteButton = 266;
 
 GUIVolumeChange::GUIVolumeChange(gui::IGUIEnvironment* env,
 		gui::IGUIElement* parent, s32 id,
-		IMenuManager *menumgr, ISimpleTextureSource *tsrc
+		IMenuManager *menumgr
 ):
-	GUIModalMenu(env, parent, id, menumgr),
-	m_tsrc(tsrc)
+	GUIModalMenu(env, parent, id, menumgr)
 {
 }
 
@@ -105,7 +103,8 @@ void GUIVolumeChange::regenerateGui(v2u32 screensize)
 		core::rect<s32> rect(0, 0, 80 * s, 30 * s);
 		rect = rect + v2s32(size.X / 2 - 80 * s / 2, size.Y / 2 + 55 * s);
 		const wchar_t *text = wgettext("Exit");
-		GUIButton::addButton(Environment, rect, m_tsrc, this, ID_soundExitButton, text);
+		Environment->addButton(rect, this, ID_soundExitButton,
+			text);
 		delete[] text;
 	}
 	{
@@ -171,7 +170,7 @@ bool GUIVolumeChange::OnEvent(const SEvent& event)
 		if (event.GUIEvent.EventType == gui::EGET_ELEMENT_FOCUS_LOST
 				&& isVisible()) {
 			if (!canTakeFocus(event.GUIEvent.Element)) {
-				infostream << "GUIVolumeChange: Not allowing focus change."
+				dstream << "GUIMainMenu: Not allowing focus change."
 				<< std::endl;
 				// Returning true disables focus change
 				return true;

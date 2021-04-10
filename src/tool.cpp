@@ -23,7 +23,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "log.h"
 #include "inventory.h"
 #include "exceptions.h"
-#include "convert_json.h"
 #include "util/serialize.h"
 #include "util/numeric.h"
 
@@ -67,7 +66,7 @@ void ToolCapabilities::serialize(std::ostream &os, u16 protocol_version) const
 	for (const auto &groupcap : groupcaps) {
 		const std::string *name = &groupcap.first;
 		const ToolGroupCap *cap = &groupcap.second;
-		os << serializeString16(*name);
+		os << serializeString(*name);
 		writeS16(os, cap->uses);
 		writeS16(os, cap->maxlevel);
 		writeU32(os, cap->times.size());
@@ -80,7 +79,7 @@ void ToolCapabilities::serialize(std::ostream &os, u16 protocol_version) const
 	writeU32(os, damageGroups.size());
 
 	for (const auto &damageGroup : damageGroups) {
-		os << serializeString16(damageGroup.first);
+		os << serializeString(damageGroup.first);
 		writeS16(os, damageGroup.second);
 	}
 
@@ -99,7 +98,7 @@ void ToolCapabilities::deSerialize(std::istream &is)
 	groupcaps.clear();
 	u32 groupcaps_size = readU32(is);
 	for (u32 i = 0; i < groupcaps_size; i++) {
-		std::string name = deSerializeString16(is);
+		std::string name = deSerializeString(is);
 		ToolGroupCap cap;
 		cap.uses = readS16(is);
 		cap.maxlevel = readS16(is);
@@ -114,7 +113,7 @@ void ToolCapabilities::deSerialize(std::istream &is)
 
 	u32 damage_groups_size = readU32(is);
 	for (u32 i = 0; i < damage_groups_size; i++) {
-		std::string name = deSerializeString16(is);
+		std::string name = deSerializeString(is);
 		s16 rating = readS16(is);
 		damageGroups[name] = rating;
 	}
@@ -131,7 +130,7 @@ void ToolCapabilities::serializeJson(std::ostream &os) const
 	root["punch_attack_uses"] = punch_attack_uses;
 
 	Json::Value groupcaps_object;
-	for (const auto &groupcap : groupcaps) {
+	for (auto groupcap : groupcaps) {
 		groupcap.second.toJson(groupcaps_object[groupcap.first]);
 	}
 	root["groupcaps"] = groupcaps_object;
@@ -143,7 +142,7 @@ void ToolCapabilities::serializeJson(std::ostream &os) const
 	}
 	root["damage_groups"] = damage_groups_object;
 
-	fastWriteJson(root, os);
+	os << root;
 }
 
 void ToolCapabilities::deserializeJson(std::istream &is)

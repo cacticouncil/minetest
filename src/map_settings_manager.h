@@ -44,7 +44,8 @@ struct MapgenParams;
 */
 class MapSettingsManager {
 public:
-	MapSettingsManager(const std::string &map_meta_path);
+	MapSettingsManager(Settings *user_settings,
+		const std::string &map_meta_path);
 	~MapSettingsManager();
 
 	// Finalized map generation parameters
@@ -70,6 +71,6 @@ public:
 
 private:
 	std::string m_map_meta_path;
-	// TODO: Rename to "m_settings"
 	Settings *m_map_settings;
+	Settings *m_user_settings;
 };

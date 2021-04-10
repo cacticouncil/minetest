@@ -23,13 +23,6 @@ public:
 	GUIScrollBar(IGUIEnvironment *environment, IGUIElement *parent, s32 id,
 			core::rect<s32> rectangle, bool horizontal, bool auto_scale);
 
-	enum ArrowVisibility
-	{
-		HIDE,
-		SHOW,
-		DEFAULT
-	};
-
 	virtual void draw();
 	virtual void updateAbsolutePosition();
 	virtual bool OnEvent(const SEvent &event);
@@ -46,7 +39,6 @@ public:
 	void setLargeStep(const s32 &step);
 	void setPos(const s32 &pos);
 	void setPageSize(const s32 &size);
-	void setArrowsVisible(ArrowVisibility visible);
 
 private:
 	void refreshControls();
@@ -55,7 +47,6 @@ private:
 
 	IGUIButton *up_button;
 	IGUIButton *down_button;
-	ArrowVisibility arrow_visibility = DEFAULT;
 	bool is_dragging;
 	bool is_horizontal;
 	bool is_auto_scaling;
@@ -68,6 +59,7 @@ private:
 	s32 max_pos;
 	s32 small_step;
 	s32 large_step;
+	u32 last_change;
 	s32 drag_offset;
 	s32 page_size;
 	s32 border_size;

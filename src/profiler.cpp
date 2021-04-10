@@ -38,7 +38,7 @@ ScopeProfiler::~ScopeProfiler()
 		return;
 
 	float duration_ms = m_timer->stop(true);
-	float duration = duration_ms;
+	float duration = duration_ms / 1000.0;
 	if (m_profiler) {
 		switch (m_type) {
 		case SPT_ADD:

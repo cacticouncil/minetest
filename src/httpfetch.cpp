@@ -22,7 +22,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <iostream>
 #include <sstream>
 #include <list>
-#include <unordered_map>
+#include <map>
 #include <cerrno>
 #include <mutex>
 #include "network/socket.h" // for select()
@@ -37,14 +37,13 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "settings.h"
 #include "noise.h"
 
-static std::mutex g_httpfetch_mutex;
-static std::unordered_map<unsigned long, std::queue<HTTPFetchResult>>
-	g_httpfetch_results;
-static PcgRandom g_callerid_randomness;
+std::mutex g_httpfetch_mutex;
+std::map<unsigned long, std::queue<HTTPFetchResult> > g_httpfetch_results;
+PcgRandom g_callerid_randomness;
 
 HTTPFetchRequest::HTTPFetchRequest() :
 	timeout(g_settings->getS32("curl_timeout")),
-	connect_timeout(10 * 1000),
+	connect_timeout(timeout),
 	useragent(std::string(PROJECT_NAME_C "/") + g_version_hash + " (" + porting::get_sysinfo() + ")")
 {
 }
@@ -55,7 +54,7 @@ static void httpfetch_deliver_result(const HTTPFetchResult &fetch_result)
 	unsigned long caller = fetch_result.caller;
 	if (caller != HTTPFETCH_DISCARD) {
 		MutexAutoLock lock(g_httpfetch_mutex);
-		g_httpfetch_results[caller].emplace(fetch_result);
+		g_httpfetch_results[caller].push(fetch_result);
 	}
 }
 
@@ -68,7 +67,8 @@ unsigned long httpfetch_caller_alloc()
 	// Check each caller ID except HTTPFETCH_DISCARD
 	const unsigned long discard = HTTPFETCH_DISCARD;
 	for (unsigned long caller = discard + 1; caller != discard; ++caller) {
-		auto it = g_httpfetch_results.find(caller);
+		std::map<unsigned long, std::queue<HTTPFetchResult> >::iterator
+			it = g_httpfetch_results.find(caller);
 		if (it == g_httpfetch_results.end()) {
 			verbosestream << "httpfetch_caller_alloc: allocating "
 					<< caller << std::endl;
@@ -127,7 +127,8 @@ bool httpfetch_async_get(unsigned long caller, HTTPFetchResult &fetch_result)
 	MutexAutoLock lock(g_httpfetch_mutex);
 
 	// Check that caller exists
-	auto it = g_httpfetch_results.find(caller);
+	std::map<unsigned long, std::queue<HTTPFetchResult> >::iterator
+		it = g_httpfetch_results.find(caller);
 	if (it == g_httpfetch_results.end())
 		return false;
 
@@ -137,7 +138,7 @@ bool httpfetch_async_get(unsigned long caller, HTTPFetchResult &fetch_result)
 		return false;
 
 	// Pop first result
-	fetch_result = std::move(caller_results.front());
+	fetch_result = caller_results.front();
 	caller_results.pop();
 	return true;
 }
@@ -293,11 +294,13 @@ HTTPFetchOngoing::HTTPFetchOngoing(const HTTPFetchRequest &request_,
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &oss);
 	}
 
-	// Set data from fields or raw_data
-	if (request.multipart) {
+	// Set POST (or GET) data
+	if (request.post_fields.empty() && request.post_data.empty()) {
+		curl_easy_setopt(curl, CURLOPT_HTTPGET, 1);
+	} else if (request.multipart) {
 		curl_httppost *last = NULL;
-		for (StringMap::iterator it = request.fields.begin();
-				it != request.fields.end(); ++it) {
+		for (StringMap::iterator it = request.post_fields.begin();
+				it != request.post_fields.end(); ++it) {
 			curl_formadd(&post, &last,
 					CURLFORM_NAMELENGTH, it->first.size(),
 					CURLFORM_PTRNAME, it->first.c_str(),
@@ -308,42 +311,28 @@ HTTPFetchOngoing::HTTPFetchOngoing(const HTTPFetchRequest &request_,
 		curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
 		// request.post_fields must now *never* be
 		// modified until CURLOPT_HTTPPOST is cleared
+	} else if (request.post_data.empty()) {
+		curl_easy_setopt(curl, CURLOPT_POST, 1);
+		std::string str;
+		for (auto &post_field : request.post_fields) {
+			if (!str.empty())
+				str += "&";
+			str += urlencode(post_field.first);
+			str += "=";
+			str += urlencode(post_field.second);
+		}
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
+				str.size());
+		curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS,
+				str.c_str());
 	} else {
-		switch (request.method) {
-		case HTTP_GET:
-			curl_easy_setopt(curl, CURLOPT_HTTPGET, 1);
-			break;
-		case HTTP_POST:
-			curl_easy_setopt(curl, CURLOPT_POST, 1);
-			break;
-		case HTTP_PUT:
-			curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "PUT");
-			break;
-		case HTTP_DELETE:
-			curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "DELETE");
-			break;
-		}
-		if (request.method != HTTP_GET) {
-			if (!request.raw_data.empty()) {
-				curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
-						request.raw_data.size());
-				curl_easy_setopt(curl, CURLOPT_POSTFIELDS,
-						request.raw_data.c_str());
-			} else if (!request.fields.empty()) {
-				std::string str;
-				for (auto &field : request.fields) {
-					if (!str.empty())
-						str += "&";
-					str += urlencode(field.first);
-					str += "=";
-					str += urlencode(field.second);
-				}
-				curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
-						str.size());
-				curl_easy_setopt(curl, CURLOPT_COPYPOSTFIELDS,
-						str.c_str());
-			}
-		}
+		curl_easy_setopt(curl, CURLOPT_POST, 1);
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE,
+				request.post_data.size());
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS,
+				request.post_data.c_str());
+		// request.post_data must now *never* be
+		// modified until CURLOPT_POSTFIELDS is cleared
 	}
 	// Set additional HTTP headers
 	for (const std::string &extra_header : request.extra_headers) {

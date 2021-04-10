@@ -34,7 +34,6 @@ public:
 
 	void beginSave();
 	void endSave();
-	void rollback();
 
 	bool initialized() const;
 
@@ -144,27 +143,4 @@ protected:
 
 private:
 	bool playerDataExists(const std::string &playername);
-};
-
-class AuthDatabasePostgreSQL : private Database_PostgreSQL, public AuthDatabase
-{
-public:
-	AuthDatabasePostgreSQL(const std::string &connect_string);
-	virtual ~AuthDatabasePostgreSQL() = default;
-
-	virtual void verifyDatabase() { Database_PostgreSQL::verifyDatabase(); }
-
-	virtual bool getAuth(const std::string &name, AuthEntry &res);
-	virtual bool saveAuth(const AuthEntry &authEntry);
-	virtual bool createAuth(AuthEntry &authEntry);
-	virtual bool deleteAuth(const std::string &name);
-	virtual void listNames(std::vector<std::string> &res);
-	virtual void reload();
-
-protected:
-	virtual void createDatabase();
-	virtual void initStatements();
-
-private:
-	virtual void writePrivileges(const AuthEntry &authEntry);
 };

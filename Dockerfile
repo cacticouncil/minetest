@@ -1,61 +1,31 @@
-FROM alpine:3.13
+FROM debian:stretch
 
-ENV MINETEST_GAME_VERSION master
-ENV IRRLICHT_VERSION master
+USER root
+RUN apt-get update -y && \
+	apt-get -y install build-essential libirrlicht-dev cmake libbz2-dev libpng-dev libjpeg-dev \
+		libsqlite3-dev libcurl4-gnutls-dev zlib1g-dev libgmp-dev libjsoncpp-dev git && \
+		apt-get clean && rm -rf /var/cache/apt/archives/* && \
+		rm -rf /var/lib/apt/lists/*
 
-COPY .git /usr/src/minetest/.git
-COPY CMakeLists.txt /usr/src/minetest/CMakeLists.txt
-COPY README.md /usr/src/minetest/README.md
-COPY minetest.conf.example /usr/src/minetest/minetest.conf.example
-COPY builtin /usr/src/minetest/builtin
-COPY cmake /usr/src/minetest/cmake
-COPY doc /usr/src/minetest/doc
-COPY fonts /usr/src/minetest/fonts
-COPY lib /usr/src/minetest/lib
-COPY misc /usr/src/minetest/misc
-COPY po /usr/src/minetest/po
-COPY src /usr/src/minetest/src
-COPY textures /usr/src/minetest/textures
+COPY . /usr/src/minetest
 
-WORKDIR /usr/src/minetest
-
-RUN apk add --no-cache git build-base cmake sqlite-dev curl-dev zlib-dev \
-		gmp-dev jsoncpp-dev postgresql-dev luajit-dev ca-certificates && \
-	git clone --depth=1 -b ${MINETEST_GAME_VERSION} https://github.com/minetest/minetest_game.git ./games/minetest_game && \
-	rm -fr ./games/minetest_game/.git
-
-WORKDIR /usr/src/
-RUN git clone --recursive https://github.com/jupp0r/prometheus-cpp/ && \
-	mkdir prometheus-cpp/build && \
-	cd prometheus-cpp/build && \
-	cmake .. \
-		-DCMAKE_INSTALL_PREFIX=/usr/local \
-		-DCMAKE_BUILD_TYPE=Release \
-		-DENABLE_TESTING=0 && \
-	make -j2 && \
-	make install
-
-RUN git clone --depth=1 https://github.com/minetest/irrlicht/ -b ${IRRLICHT_VERSION} && \
-	cp -r irrlicht/include /usr/include/irrlichtmt
-
-WORKDIR /usr/src/minetest
-RUN mkdir build && \
-	cd build && \
-	cmake .. \
-		-DCMAKE_INSTALL_PREFIX=/usr/local \
-		-DCMAKE_BUILD_TYPE=Release \
+RUN	mkdir -p /usr/src/minetest/cmakebuild && cd /usr/src/minetest/cmakebuild && \
+    	cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DRUN_IN_PLACE=FALSE \
 		-DBUILD_SERVER=TRUE \
-		-DENABLE_PROMETHEUS=TRUE \
-		-DBUILD_UNITTESTS=FALSE \
-		-DBUILD_CLIENT=FALSE && \
-	make -j2 && \
-	make install
+		-DBUILD_CLIENT=FALSE \
+		-DENABLE_SYSTEM_JSONCPP=1 \
+		.. && \
+		make -j2 && \
+		rm -Rf ../games/minetest_game && git clone https://github.com/minetest/minetest_game ../games/minetest_game && \
+		make install
 
-FROM alpine:3.13
+FROM debian:stretch
 
-RUN apk add --no-cache sqlite-libs curl gmp libstdc++ libgcc libpq luajit jsoncpp && \
-	adduser -D minetest --uid 30000 -h /var/lib/minetest && \
-	chown -R minetest:minetest /var/lib/minetest
+USER root
+RUN groupadd minetest && useradd -m -g minetest -d /var/lib/minetest minetest && \
+    apt-get update -y && \
+    apt-get -y install libcurl3-gnutls libjsoncpp1 liblua5.1-0 libluajit-5.1-2 libpq5 libsqlite3-0 \
+        libstdc++6 zlib1g libc6
 
 WORKDIR /var/lib/minetest
 
@@ -63,8 +33,8 @@ COPY --from=0 /usr/local/share/minetest /usr/local/share/minetest
 COPY --from=0 /usr/local/bin/minetestserver /usr/local/bin/minetestserver
 COPY --from=0 /usr/local/share/doc/minetest/minetest.conf.example /etc/minetest/minetest.conf
 
-USER minetest:minetest
+USER minetest
 
-EXPOSE 30000/udp 30000/tcp
+EXPOSE 30000/udp
 
 CMD ["/usr/local/bin/minetestserver", "--config", "/etc/minetest/minetest.conf"]

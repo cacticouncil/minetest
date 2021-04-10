@@ -23,28 +23,29 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 /* Includes                                                                   */
 /******************************************************************************/
 #include "irrlichttypes.h"
+#include "modalMenu.h"
 #include "guiFormSpecMenu.h"
 #include "client/sound.h"
 #include "client/tile.h"
 #include "util/enriched_string.h"
 
 /******************************************************************************/
-/* Structs and macros                                                         */
+/* Typedefs and macros                                                        */
 /******************************************************************************/
 /** texture layer ids */
-enum texture_layer {
+typedef enum {
 	TEX_LAYER_BACKGROUND = 0,
 	TEX_LAYER_OVERLAY,
 	TEX_LAYER_HEADER,
 	TEX_LAYER_FOOTER,
 	TEX_LAYER_MAX
-};
+} texture_layer;
 
-struct image_definition {
+typedef struct {
 	video::ITexture *texture = nullptr;
 	bool             tile;
 	unsigned int     minsize;
-};
+} image_definition;
 
 /******************************************************************************/
 /* forward declarations                                                       */
@@ -277,7 +278,7 @@ private:
 	/** do preprocessing for cloud subsystem */
 	void cloudPreProcess();
 	/** do postprocessing for cloud subsystem */
-	void cloudPostProcess(u32 frametime_min, IrrlichtDevice *device);
+	void cloudPostProcess();
 
 	/** internam data required for drawing clouds */
 	struct clouddata {

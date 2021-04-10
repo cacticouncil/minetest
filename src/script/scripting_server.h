@@ -51,3 +51,5 @@ public:
 private:
 	void InitializeModApi(lua_State *L, int top);
 };
+
+void log_deprecated(const std::string &message);

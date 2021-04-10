@@ -26,7 +26,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 class MMVManip;
 class NodeDefManager;
-class ServerMap;
+class ServerEnvironment;
+
 
 namespace treegen {
 
@@ -72,10 +73,12 @@ namespace treegen {
 	treegen::error make_ltree(MMVManip &vmanip, v3s16 p0,
 		const NodeDefManager *ndef, TreeDef tree_definition);
 	// Spawn L-systems tree from LUA
-	treegen::error spawn_ltree (ServerMap *map, v3s16 p0,
+	treegen::error spawn_ltree (ServerEnvironment *env, v3s16 p0,
 		const NodeDefManager *ndef, const TreeDef &tree_definition);
 
 	// L-System tree gen helper functions
+	void tree_node_placement(MMVManip &vmanip, v3f p0,
+		MapNode node);
 	void tree_trunk_placement(MMVManip &vmanip, v3f p0,
 		TreeDef &tree_definition);
 	void tree_leaves_placement(MMVManip &vmanip, v3f p0,

@@ -30,7 +30,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "networkprotocol.h"
 #include <iostream>
 #include <fstream>
-#include <vector>
+#include <list>
 #include <map>
 
 class NetworkPacket;
@@ -141,6 +141,7 @@ private:
 === NOTES ===
 
 A packet is sent through a channel to a peer with a basic header:
+TODO: Should we have a receiver_peer_id also?
 	Header (7 bytes):
 	[0] u32 protocol_id
 	[4] session_t sender_peer_id
@@ -151,7 +152,8 @@ sender_peer_id:
 	value 1 (PEER_ID_SERVER) is reserved for server
 	these constants are defined in constants.h
 channel:
-	Channel numbers have no intrinsic meaning. Currently only 0, 1, 2 exist.
+	The lower the number, the higher the priority is.
+	Only channels 0, 1 and 2 exist.
 */
 #define BASE_HEADER_SIZE 7
 #define CHANNEL_COUNT 3
@@ -384,14 +386,12 @@ struct ConnectionCommand
 	}
 };
 
-/* maximum window size to use, 0xFFFF is theoretical maximum. don't think about
+/* maximum window size to use, 0xFFFF is theoretical maximum  don't think about
  * touching it, the less you're away from it the more likely data corruption
  * will occur
  */
 #define MAX_RELIABLE_WINDOW_SIZE 0x8000
-/* starting value for window size */
-#define START_RELIABLE_WINDOW_SIZE 0x400
-/* minimum value for window size */
+	/* starting value for window size */
 #define MIN_RELIABLE_WINDOW_SIZE 0x40
 
 class Channel
@@ -555,15 +555,15 @@ class Peer {
 
 		bool isTimedOut(float timeout);
 
-		unsigned int m_increment_packets_remaining = 0;
+		unsigned int m_increment_packets_remaining = 9;
+		unsigned int m_increment_bytes_remaining = 0;
 
 		virtual u16 getNextSplitSequenceNumber(u8 channel) { return 0; };
 		virtual void setNextSplitSequenceNumber(u8 channel, u16 seqnum) {};
 		virtual SharedBuffer<u8> addSplitPacket(u8 channel, const BufferedPacket &toadd,
 				bool reliable)
 		{
-			errorstream << "Peer::addSplitPacket called,"
-					<< " this is supposed to be never called!" << std::endl;
+			fprintf(stderr,"Peer: addSplitPacket called, this is supposed to be never called!\n");
 			return SharedBuffer<u8>(0);
 		};
 
@@ -771,7 +771,6 @@ public:
 	bool Connected();
 	void Disconnect();
 	void Receive(NetworkPacket* pkt);
-	bool TryReceive(NetworkPacket *pkt);
 	void Send(session_t peer_id, u8 channelnum, NetworkPacket *pkt, bool reliable);
 	session_t GetPeerID() const { return m_peer_id; }
 	Address GetPeerAddress(session_t peer_id);
@@ -795,7 +794,7 @@ protected:
 
 	void PrintInfo(std::ostream &out);
 
-	std::vector<session_t> getPeerIDs()
+	std::list<session_t> getPeerIDs()
 	{
 		MutexAutoLock peerlock(m_peers_mutex);
 		return m_peer_ids;
@@ -804,16 +803,9 @@ protected:
 	UDPSocket m_udpSocket;
 	MutexedQueue<ConnectionCommand> m_command_queue;
 
-	bool Receive(NetworkPacket *pkt, u32 timeout);
-
 	void putEvent(ConnectionEvent &e);
 
 	void TriggerSend();
-	
-	bool ConnectedToServer() 
-	{
-		return getPeerNoEx(PEER_ID_SERVER) != nullptr;
-	}
 private:
 	MutexedQueue<ConnectionEvent> m_event_queue;
 
@@ -821,7 +813,7 @@ private:
 	u32 m_protocol_id;
 
 	std::map<session_t, Peer *> m_peers;
-	std::vector<session_t> m_peer_ids;
+	std::list<session_t> m_peer_ids;
 	std::mutex m_peers_mutex;
 
 	std::unique_ptr<ConnectionSendThread> m_sendThread;

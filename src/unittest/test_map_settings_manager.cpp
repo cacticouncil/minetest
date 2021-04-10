@@ -30,7 +30,7 @@ public:
 	TestMapSettingsManager() { TestManager::registerTestModule(this); }
 	const char *getName() { return "TestMapSettingsManager"; }
 
-	void makeUserConfig();
+	void makeUserConfig(Settings *conf);
 	std::string makeMetaFile(bool make_corrupt);
 
 	void runTests(IGameDef *gamedef);
@@ -65,11 +65,33 @@ void check_noise_params(const NoiseParams *np1, const NoiseParams *np2)
 }
 
 
-void TestMapSettingsManager::makeUserConfig()
+std::string read_file_to_string(const std::string &filepath)
 {
-	delete Settings::getLayer(SL_GLOBAL);
-	Settings *conf = Settings::createLayer(SL_GLOBAL);
+	std::string buf;
+	FILE *f = fopen(filepath.c_str(), "rb");
+	if (!f)
+		return "";
 
+	fseek(f, 0, SEEK_END);
+
+	long filesize = ftell(f);
+	if (filesize == -1) {
+		fclose(f);
+		return "";
+	}
+	rewind(f);
+
+	buf.resize(filesize);
+
+	UASSERTEQ(size_t, fread(&buf[0], 1, filesize, f), 1);
+
+	fclose(f);
+	return buf;
+}
+
+
+void TestMapSettingsManager::makeUserConfig(Settings *conf)
+{
 	conf->set("mg_name", "v7");
 	conf->set("seed", "5678");
 	conf->set("water_level", "20");
@@ -106,11 +128,12 @@ std::string TestMapSettingsManager::makeMetaFile(bool make_corrupt)
 
 void TestMapSettingsManager::testMapSettingsManager()
 {
-	makeUserConfig();
+	Settings user_settings;
+	makeUserConfig(&user_settings);
 
 	std::string test_mapmeta_path = makeMetaFile(false);
 
-	MapSettingsManager mgr(test_mapmeta_path);
+	MapSettingsManager mgr(&user_settings, test_mapmeta_path);
 	std::string value;
 
 	UASSERT(mgr.getMapSetting("mg_name", &value));
@@ -141,12 +164,6 @@ void TestMapSettingsManager::testMapSettingsManager()
 	mgr.setMapSettingNoiseParams("mgv5_np_filler_depth", &script_np_filler_depth, true);
 	mgr.setMapSettingNoiseParams("mgv5_np_height", &script_np_height);
 	mgr.setMapSettingNoiseParams("mgv5_np_factor", &script_np_factor);
-
-	{
-		NoiseParams dummy;
-		mgr.getMapSettingNoiseParams("mgv5_np_factor", &dummy);
-		check_noise_params(&dummy, &script_np_factor);
-	}
 
 	// Now make our Params and see if the values are correctly sourced
 	MapgenParams *params = mgr.makeMapgenParams();
@@ -182,8 +199,7 @@ void TestMapSettingsManager::testMapSettingsManager()
 	};
 
 	SHA1 ctx;
-	std::string metafile_contents;
-	UASSERT(fs::ReadFile(test_mapmeta_path, metafile_contents));
+	std::string metafile_contents = read_file_to_string(test_mapmeta_path);
 	ctx.addBytes(&metafile_contents[0], metafile_contents.size());
 	unsigned char *sha1_result = ctx.getDigest();
 	int resultdiff = memcmp(sha1_result, expected_contents_hash, 20);
@@ -196,66 +212,50 @@ void TestMapSettingsManager::testMapSettingsManager()
 
 void TestMapSettingsManager::testMapMetaSaveLoad()
 {
+	Settings conf;
 	std::string path = getTestTempDirectory()
 		+ DIR_DELIM + "foobar" + DIR_DELIM + "map_meta.txt";
 
-	makeUserConfig();
-	Settings &conf = *Settings::getLayer(SL_GLOBAL);
-
-	// There cannot be two MapSettingsManager
-	// copy the mapgen params to compare them
-	MapgenParams params1, params2;
 	// Create a set of mapgen params and save them to map meta
-	{
-		conf.set("seed", "12345");
-		conf.set("water_level", "5");
-		MapSettingsManager mgr(path);
-		MapgenParams *params = mgr.makeMapgenParams();
-		UASSERT(params);
-		params1 = *params;
-		params1.bparams = nullptr; // No double-free
-		UASSERT(mgr.saveMapMeta());
-	}
+	conf.set("seed", "12345");
+	conf.set("water_level", "5");
+	MapSettingsManager mgr1(&conf, path);
+	MapgenParams *params1 = mgr1.makeMapgenParams();
+	UASSERT(params1);
+	UASSERT(mgr1.saveMapMeta());
 
 	// Now try loading the map meta to mapgen params
-	{
-		conf.set("seed", "67890");
-		conf.set("water_level", "32");
-		MapSettingsManager mgr(path);
-		UASSERT(mgr.loadMapMeta());
-		MapgenParams *params = mgr.makeMapgenParams();
-		UASSERT(params);
-		params2 = *params;
-		params2.bparams = nullptr; // No double-free
-	}
+	conf.set("seed", "67890");
+	conf.set("water_level", "32");
+	MapSettingsManager mgr2(&conf, path);
+	UASSERT(mgr2.loadMapMeta());
+	MapgenParams *params2 = mgr2.makeMapgenParams();
+	UASSERT(params2);
 
 	// Check that both results are correct
-	UASSERTEQ(u64, params1.seed, 12345);
-	UASSERTEQ(s16, params1.water_level, 5);
-	UASSERTEQ(u64, params2.seed, 12345);
-	UASSERTEQ(s16, params2.water_level, 5);
+	UASSERTEQ(u64, params1->seed, 12345);
+	UASSERTEQ(s16, params1->water_level, 5);
+	UASSERTEQ(u64, params2->seed, 12345);
+	UASSERTEQ(s16, params2->water_level, 5);
 }
 
 
 void TestMapSettingsManager::testMapMetaFailures()
 {
 	std::string test_mapmeta_path;
+	Settings conf;
 
 	// Check to see if it'll fail on a non-existent map meta file
-	{
-		test_mapmeta_path = "woobawooba/fgdfg/map_meta.txt";
-		UASSERT(!fs::PathExists(test_mapmeta_path));
+	test_mapmeta_path = "woobawooba/fgdfg/map_meta.txt";
+	UASSERT(!fs::PathExists(test_mapmeta_path));
 
-		MapSettingsManager mgr1(test_mapmeta_path);
-		UASSERT(!mgr1.loadMapMeta());
-	}
+	MapSettingsManager mgr1(&conf, test_mapmeta_path);
+	UASSERT(!mgr1.loadMapMeta());
 
 	// Check to see if it'll fail on a corrupt map meta file
-	{
-		test_mapmeta_path = makeMetaFile(true);
-		UASSERT(fs::PathExists(test_mapmeta_path));
+	test_mapmeta_path = makeMetaFile(true);
+	UASSERT(fs::PathExists(test_mapmeta_path));
 
-		MapSettingsManager mgr2(test_mapmeta_path);
-		UASSERT(!mgr2.loadMapMeta());
-	}
+	MapSettingsManager mgr2(&conf, test_mapmeta_path);
+	UASSERT(!mgr2.loadMapMeta());
 }

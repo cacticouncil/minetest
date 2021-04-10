@@ -21,6 +21,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "exceptions.h"
 #include "remoteplayer.h"
+#include "content_sao.h"
 #include "server.h"
 
 class TestPlayer : public TestBase

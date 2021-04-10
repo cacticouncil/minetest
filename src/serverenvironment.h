@@ -190,6 +190,14 @@ enum ClearObjectsMode {
 		CLEAR_OBJECTS_MODE_QUICK,
 };
 
+/*
+	The server-side environment.
+
+	This is not thread-safe. Server uses an environment mutex.
+*/
+
+typedef std::unordered_map<u16, ServerActiveObject *> ServerActiveObjectMap;
+
 class ServerEnvironment : public Environment
 {
 public:
@@ -281,9 +289,9 @@ public:
 
 	/*
 		Get the next message emitted by some active object.
-		Returns false if no messages are available, true otherwise.
+		Returns a message with id=0 if no messages are available.
 	*/
-	bool getActiveObjectMessage(ActiveObjectMessage *dest);
+	ActiveObjectMessage getActiveObjectMessage();
 
 	virtual void getSelectedActiveObjects(
 		const core::line3d<f32> &shootline_on_map,
@@ -314,21 +322,10 @@ public:
 	bool removeNode(v3s16 p);
 	bool swapNode(v3s16 p, const MapNode &n);
 
-	// Find the daylight value at pos with a Depth First Search
-	u8 findSunlight(v3s16 pos) const;
-
 	// Find all active objects inside a radius around a point
-	void getObjectsInsideRadius(std::vector<ServerActiveObject *> &objects, const v3f &pos, float radius,
-			std::function<bool(ServerActiveObject *obj)> include_obj_cb)
+	void getObjectsInsideRadius(std::vector<u16> &objects, const v3f &pos, float radius)
 	{
-		return m_ao_manager.getObjectsInsideRadius(pos, radius, objects, include_obj_cb);
-	}
-
-	// Find all active objects inside a box
-	void getObjectsInArea(std::vector<ServerActiveObject *> &objects, const aabb3f &box,
-			std::function<bool(ServerActiveObject *obj)> include_obj_cb)
-	{
-		return m_ao_manager.getObjectsInArea(box, objects, include_obj_cb);
+		return m_ao_manager.getObjectsInsideRadius(pos, radius, objects);
 	}
 
 	// Clear objects, loading and going through every MapBlock
@@ -336,6 +333,16 @@ public:
 
 	// This makes stuff happen
 	void step(f32 dtime);
+
+	/*!
+	 * Returns false if the given line intersects with a
+	 * non-air node, true otherwise.
+	 * \param pos1 start of the line
+	 * \param pos2 end of the line
+	 * \param p output, position of the first non-air node
+	 * the line intersects
+	 */
+	bool line_of_sight(v3f pos1, v3f pos2, v3s16 *p = NULL);
 
 	u32 getGameTime() const { return m_game_time; }
 
@@ -351,7 +358,6 @@ public:
 
 	RemotePlayer *getPlayer(const session_t peer_id);
 	RemotePlayer *getPlayer(const char* name);
-	const std::vector<RemotePlayer *> getPlayers() const { return m_players; }
 	u32 getPlayerCount() const { return m_players.size(); }
 
 	static bool migratePlayersDatabase(const GameParams &game_params,
@@ -441,8 +447,6 @@ private:
 	IntervalLimiter m_active_blocks_management_interval;
 	IntervalLimiter m_active_block_modifier_interval;
 	IntervalLimiter m_active_blocks_nodemetadata_interval;
-	// Whether the variables below have been read from file yet
-	bool m_meta_loaded = false;
 	// Time from the beginning of the game in seconds.
 	// Incremented in step().
 	u32 m_game_time = 0;
@@ -473,6 +477,4 @@ private:
 	IntervalLimiter m_particle_management_interval;
 	std::unordered_map<u32, float> m_particle_spawners;
 	std::unordered_map<u32, u16> m_particle_spawner_attachments;
-
-	ServerActiveObject* createSAO(ActiveObjectType type, v3f pos, const std::string &data);
 };

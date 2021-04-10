@@ -25,8 +25,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 class TestClientActiveObjectMgr;
 class TestServerActiveObjectMgr;
 
-template <typename T>
-class ActiveObjectMgr
+template <typename T> class ActiveObjectMgr
 {
 	friend class ::TestClientActiveObjectMgr;
 	friend class ::TestServerActiveObjectMgr;

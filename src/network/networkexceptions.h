@@ -56,6 +56,12 @@ public:
 	InvalidIncomingDataException(const char *s) : BaseException(s) {}
 };
 
+class InvalidOutgoingDataException : public BaseException
+{
+public:
+	InvalidOutgoingDataException(const char *s) : BaseException(s) {}
+};
+
 class NoIncomingDataException : public BaseException
 {
 public:

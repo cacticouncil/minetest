@@ -25,67 +25,16 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "clientmap.h"
 #include "scripting_client.h"
 #include "mapblock_mesh.h"
-#include "mtevent.h"
+#include "event.h"
 #include "collision.h"
 #include "nodedef.h"
 #include "profiler.h"
 #include "raycast.h"
 #include "voxelalgorithms.h"
 #include "settings.h"
-#include "shader.h"
 #include "content_cao.h"
 #include <algorithm>
 #include "client/renderingengine.h"
-
-/*
-	CAOShaderConstantSetter
-*/
-
-//! Shader constant setter for passing material emissive color to the CAO object_shader
-class CAOShaderConstantSetter : public IShaderConstantSetter
-{
-public:
-	CAOShaderConstantSetter():
-			m_emissive_color_setting("emissiveColor")
-	{}
-
-	~CAOShaderConstantSetter() override = default;
-
-	void onSetConstants(video::IMaterialRendererServices *services) override
-	{
-		// Ambient color
-		video::SColorf emissive_color(m_emissive_color);
-
-		float as_array[4] = {
-			emissive_color.r,
-			emissive_color.g,
-			emissive_color.b,
-			emissive_color.a,
-		};
-		m_emissive_color_setting.set(as_array, services);
-	}
-
-	void onSetMaterial(const video::SMaterial& material) override
-	{
-		m_emissive_color = material.EmissiveColor;
-	}
-
-private:
-	video::SColor m_emissive_color;
-	CachedPixelShaderSetting<float, 4> m_emissive_color_setting;
-};
-
-class CAOShaderConstantSetterFactory : public IShaderConstantSetterFactory
-{
-public:
-	CAOShaderConstantSetterFactory()
-	{}
-
-	virtual IShaderConstantSetter* create()
-	{
-		return new CAOShaderConstantSetter();
-	}
-};
 
 /*
 	ClientEnvironment
@@ -98,8 +47,6 @@ ClientEnvironment::ClientEnvironment(ClientMap *map,
 	m_texturesource(texturesource),
 	m_client(client)
 {
-	auto *shdrsrc = m_client->getShaderSource();
-	shdrsrc->addShaderConstantSetterFactory(new CAOShaderConstantSetterFactory());
 }
 
 ClientEnvironment::~ClientEnvironment()
@@ -179,61 +126,81 @@ void ClientEnvironment::step(float dtime)
 	if(dtime > 0.5)
 		dtime = 0.5;
 
+	f32 dtime_downcount = dtime;
+
 	/*
 		Stuff that has a maximum time increment
 	*/
 
-	u32 steps = ceil(dtime / dtime_max_increment);
-	f32 dtime_part = dtime / steps;
-	for (; steps > 0; --steps) {
-		/*
-			Local player handling
-		*/
+	u32 loopcount = 0;
+	do
+	{
+		loopcount++;
 
-		// Control local player
-		lplayer->applyControl(dtime_part, this);
-
-		// Apply physics
-		if (!free_move && !is_climbing) {
-			// Gravity
-			v3f speed = lplayer->getSpeed();
-			if (!lplayer->in_liquid)
-				speed.Y -= lplayer->movement_gravity *
-					lplayer->physics_override_gravity * dtime_part * 2.0f;
-
-			// Liquid floating / sinking
-			if (lplayer->in_liquid && !lplayer->swimming_vertical &&
-					!lplayer->swimming_pitch)
-				speed.Y -= lplayer->movement_liquid_sink * dtime_part * 2.0f;
-
-			// Liquid resistance
-			if (lplayer->in_liquid_stable || lplayer->in_liquid) {
-				// How much the node's viscosity blocks movement, ranges
-				// between 0 and 1. Should match the scale at which viscosity
-				// increase affects other liquid attributes.
-				static const f32 viscosity_factor = 0.3f;
-
-				v3f d_wanted = -speed / lplayer->movement_liquid_fluidity;
-				f32 dl = d_wanted.getLength();
-				if (dl > lplayer->movement_liquid_fluidity_smooth)
-					dl = lplayer->movement_liquid_fluidity_smooth;
-
-				dl *= (lplayer->liquid_viscosity * viscosity_factor) +
-					(1 - viscosity_factor);
-				v3f d = d_wanted.normalize() * (dl * dtime_part * 100.0f);
-				speed += d;
-			}
-
-			lplayer->setSpeed(speed);
+		f32 dtime_part;
+		if(dtime_downcount > dtime_max_increment)
+		{
+			dtime_part = dtime_max_increment;
+			dtime_downcount -= dtime_part;
+		}
+		else
+		{
+			dtime_part = dtime_downcount;
+			/*
+				Setting this to 0 (no -=dtime_part) disables an infinite loop
+				when dtime_part is so small that dtime_downcount -= dtime_part
+				does nothing
+			*/
+			dtime_downcount = 0;
 		}
 
 		/*
-			Move the lplayer.
-			This also does collision detection.
+			Handle local player
 		*/
-		lplayer->move(dtime_part, this, position_max_increment,
-			&player_collisions);
-	}
+
+		{
+			// Apply physics
+			if (!free_move && !is_climbing) {
+				// Gravity
+				v3f speed = lplayer->getSpeed();
+				if (!lplayer->in_liquid)
+					speed.Y -= lplayer->movement_gravity *
+						lplayer->physics_override_gravity * dtime_part * 2.0f;
+
+				// Liquid floating / sinking
+				if (lplayer->in_liquid && !lplayer->swimming_vertical &&
+						!lplayer->swimming_pitch)
+					speed.Y -= lplayer->movement_liquid_sink * dtime_part * 2.0f;
+
+				// Liquid resistance
+				if (lplayer->in_liquid_stable || lplayer->in_liquid) {
+					// How much the node's viscosity blocks movement, ranges
+					// between 0 and 1. Should match the scale at which viscosity
+					// increase affects other liquid attributes.
+					static const f32 viscosity_factor = 0.3f;
+
+					v3f d_wanted = -speed / lplayer->movement_liquid_fluidity;
+					f32 dl = d_wanted.getLength();
+					if (dl > lplayer->movement_liquid_fluidity_smooth)
+						dl = lplayer->movement_liquid_fluidity_smooth;
+
+					dl *= (lplayer->liquid_viscosity * viscosity_factor) +
+						(1 - viscosity_factor);
+					v3f d = d_wanted.normalize() * (dl * dtime_part * 100.0f);
+					speed += d;
+				}
+
+				lplayer->setSpeed(speed);
+			}
+
+			/*
+				Move the lplayer.
+				This also does collision detection.
+			*/
+			lplayer->move(dtime_part, this, position_max_increment,
+				&player_collisions);
+		}
+	} while (dtime_downcount > 0.001);
 
 	bool player_immortal = lplayer->getCAO() && lplayer->getCAO()->isImmortal();
 
@@ -296,8 +263,21 @@ void ClientEnvironment::step(float dtime)
 		// Step object
 		cao->step(dtime, this);
 
-		if (update_lighting)
-			cao->updateLight(day_night_ratio);
+		if (update_lighting) {
+			// Update lighting
+			u8 light = 0;
+			bool pos_ok;
+
+			// Get node at head
+			v3s16 p = cao->getLightPosition();
+			MapNode n = this->m_map->getNode(p, &pos_ok);
+			if (pos_ok)
+				light = n.getLightBlend(day_night_ratio, m_client->ndef());
+			else
+				light = blend_light(day_night_ratio, LIGHT_SUN, 0);
+
+			cao->updateLight(light);
+		}
 	};
 
 	m_ao_manager.step(dtime, cb_state);
@@ -334,6 +314,28 @@ GenericCAO* ClientEnvironment::getGenericCAO(u16 id)
 	return NULL;
 }
 
+bool isFreeClientActiveObjectId(const u16 id,
+	ClientActiveObjectMap &objects)
+{
+	return id != 0 && objects.find(id) == objects.end();
+
+}
+
+u16 getFreeClientActiveObjectId(ClientActiveObjectMap &objects)
+{
+	// try to reuse id's as late as possible
+	static u16 last_used_id = 0;
+	u16 startid = last_used_id;
+	for(;;) {
+		last_used_id ++;
+		if (isFreeClientActiveObjectId(last_used_id, objects))
+			return last_used_id;
+
+		if (last_used_id == startid)
+			return 0;
+	}
+}
+
 u16 ClientEnvironment::addActiveObject(ClientActiveObject *object)
 {
 	// Register object. If failed return zero id
@@ -343,7 +345,18 @@ u16 ClientEnvironment::addActiveObject(ClientActiveObject *object)
 	object->addToScene(m_texturesource);
 
 	// Update lighting immediately
-	object->updateLight(getDayNightRatio());
+	u8 light = 0;
+	bool pos_ok;
+
+	// Get node at head
+	v3s16 p = object->getLightPosition();
+	MapNode n = m_map->getNode(p, &pos_ok);
+	if (pos_ok)
+		light = n.getLightBlend(getDayNightRatio(), m_client->ndef());
+	else
+		light = blend_light(getDayNightRatio(), LIGHT_SUN, 0);
+
+	object->updateLight(light);
 	return object->getId();
 }
 
@@ -380,7 +393,7 @@ void ClientEnvironment::addActiveObject(u16 id, u8 type,
 	// Object initialized:
 	if ((obj = getActiveObject(new_id))) {
 		// Final step is to update all children which are already known
-		// Data provided by AO_CMD_SPAWN_INFANT
+		// Data provided by GENERIC_CMD_SPAWN_INFANT
 		const auto &children = obj->getAttachmentChildIds();
 		for (auto c_id : children) {
 			if (auto *o = getActiveObject(c_id))

@@ -89,7 +89,7 @@ int LuaMinimap::l_get_mode(lua_State *L)
 	LuaMinimap *ref = checkobject(L, 1);
 	Minimap *m = getobject(ref);
 
-	lua_pushinteger(L, m->getModeIndex());
+	lua_pushinteger(L, m->getMinimapMode());
 	return 1;
 }
 
@@ -98,11 +98,13 @@ int LuaMinimap::l_set_mode(lua_State *L)
 	LuaMinimap *ref = checkobject(L, 1);
 	Minimap *m = getobject(ref);
 
-	u32 mode = lua_tointeger(L, 2);
-	if (mode >= m->getMaxModeIndex())
+	s32 mode = lua_tointeger(L, 2);
+	if (mode < MINIMAP_MODE_OFF ||
+		mode >= MINIMAP_MODE_COUNT) {
 		return 0;
+	}
 
-	m->setModeIndex(mode);
+	m->setMinimapMode((MinimapMode) mode);
 	return 1;
 }
 
@@ -138,11 +140,8 @@ int LuaMinimap::l_show(lua_State *L)
 	LuaMinimap *ref = checkobject(L, 1);
 	Minimap *m = getobject(ref);
 
-	// This is not very adapted to new minimap mode management. Btw, tried
-	// to do something compatible.
-
-	if (m->getModeIndex() == 0 && m->getMaxModeIndex() > 0)
-		m->setModeIndex(1);
+	if (m->getMinimapMode() == MINIMAP_MODE_OFF)
+		m->setMinimapMode(MINIMAP_MODE_SURFACEx1);
 
 	client->showMinimap(true);
 	return 1;
@@ -156,11 +155,8 @@ int LuaMinimap::l_hide(lua_State *L)
 	LuaMinimap *ref = checkobject(L, 1);
 	Minimap *m = getobject(ref);
 
-	// This is not very adapted to new minimap mode management. Btw, tried
-	// to do something compatible.
-
-	if (m->getModeIndex() != 0)
-		m->setModeIndex(0);
+	if (m->getMinimapMode() != MINIMAP_MODE_OFF)
+		m->setMinimapMode(MINIMAP_MODE_OFF);
 
 	client->showMinimap(false);
 	return 1;

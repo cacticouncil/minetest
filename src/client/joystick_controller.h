@@ -96,7 +96,7 @@ struct JoystickLayout {
 	std::vector<JoystickButtonCmb> button_keys;
 	std::vector<JoystickAxisCmb> axis_keys;
 	JoystickAxisLayout axes[JA_COUNT];
-	s16 axes_deadzone;
+	s16 axes_dead_border;
 };
 
 class JoystickController {
@@ -111,32 +111,37 @@ public:
 
 	bool wasKeyDown(GameKeyType b)
 	{
-		bool r = m_past_keys_pressed[b];
-		m_past_keys_pressed[b] = false;
+		bool r = m_past_pressed_keys[b];
+		m_past_pressed_keys[b] = false;
 		return r;
+	}
+	bool getWasKeyDown(GameKeyType b)
+	{
+		return m_past_pressed_keys[b];
+	}
+	void clearWasKeyDown(GameKeyType b)
+	{
+		m_past_pressed_keys[b] = false;
 	}
 
 	bool wasKeyReleased(GameKeyType b)
 	{
-		return m_keys_released[b];
+		bool r = m_past_released_keys[b];
+		m_past_released_keys[b] = false;
+		return r;
+	}
+	bool getWasKeyReleased(GameKeyType b)
+	{
+		return m_past_pressed_keys[b];
 	}
 	void clearWasKeyReleased(GameKeyType b)
 	{
-		m_keys_released[b] = false;
-	}
-
-	bool wasKeyPressed(GameKeyType b)
-	{
-		return m_keys_pressed[b];
-	}
-	void clearWasKeyPressed(GameKeyType b)
-	{
-		m_keys_pressed[b] = false;
+		m_past_pressed_keys[b] = false;
 	}
 
 	bool isKeyDown(GameKeyType b)
 	{
-		return m_keys_down[b];
+		return m_pressed_keys[b];
 	}
 
 	s16 getAxis(JoystickAxis axis)
@@ -157,13 +162,12 @@ private:
 
 	u8 m_joystick_id = 0;
 
-	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_keys_down;
-	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_keys_pressed;
+	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_pressed_keys;
 
 	f32 m_internal_time;
 
 	f32 m_past_pressed_time[KeyType::INTERNAL_ENUM_COUNT];
 
-	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_past_keys_pressed;
-	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_keys_released;
+	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_past_pressed_keys;
+	std::bitset<KeyType::INTERNAL_ENUM_COUNT> m_past_released_keys;
 };

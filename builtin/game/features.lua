@@ -15,11 +15,6 @@ core.features = {
 	httpfetch_binary_data = true,
 	formspec_version_element = true,
 	area_store_persistent_ids = true,
-	pathfinder_works = true,
-	object_step_has_moveresult = true,
-	direct_velocity_on_players = true,
-	use_texture_alpha_string_modes = true,
-	degrotate_240_steps = true,
 }
 
 function core.has_feature(arg)

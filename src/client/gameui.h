@@ -20,7 +20,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #pragma once
 
-#include "irrlichttypes.h"
 #include <IGUIEnvironment.h>
 #include "gui/guiFormSpecMenu.h"
 #include "util/enriched_string.h"

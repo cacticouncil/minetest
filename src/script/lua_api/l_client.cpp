@@ -29,50 +29,16 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "cpp_api/s_base.h"
 #include "gettext.h"
 #include "l_internal.h"
+#include "lua_api/l_item.h"
 #include "lua_api/l_nodemeta.h"
 #include "gui/mainmenumanager.h"
 #include "map.h"
 #include "util/string.h"
 #include "nodedef.h"
 
-#define checkCSMRestrictionFlag(flag) \
-	( getClient(L)->checkCSMRestrictionFlag(CSMRestrictionFlags::flag) )
-
-// Not the same as FlagDesc, which contains an `u32 flag`
-struct CSMFlagDesc {
-	const char *name;
-	u64 flag;
-};
-
-/*
-	FIXME: This should eventually be moved somewhere else
-	It also needs to be kept in sync with the definition of CSMRestrictionFlags
-	in network/networkprotocol.h
-*/
-const static CSMFlagDesc flagdesc_csm_restriction[] = {
-	{"load_client_mods",  CSM_RF_LOAD_CLIENT_MODS},
-	{"chat_messages",     CSM_RF_CHAT_MESSAGES},
-	{"read_itemdefs",     CSM_RF_READ_ITEMDEFS},
-	{"read_nodedefs",     CSM_RF_READ_NODEDEFS},
-	{"lookup_nodes",      CSM_RF_LOOKUP_NODES},
-	{"read_playerinfo",   CSM_RF_READ_PLAYERINFO},
-	{NULL,      0}
-};
-
-// get_current_modname()
 int ModApiClient::l_get_current_modname(lua_State *L)
 {
 	lua_rawgeti(L, LUA_REGISTRYINDEX, CUSTOM_RIDX_CURRENT_MOD_NAME);
-	return 1;
-}
-
-// get_modpath(modname)
-int ModApiClient::l_get_modpath(lua_State *L)
-{
-	std::string modname = readParam<std::string>(L, 1);
-	// Client mods use a virtual filesystem, see Client::scanModSubfolder()
-	std::string path = modname + ":";
-	lua_pushstring(L, path.c_str());
 	return 1;
 }
 
@@ -129,8 +95,11 @@ int ModApiClient::l_send_chat_message(lua_State *L)
 
 	// If server disabled this API, discard
 
-	if (checkCSMRestrictionFlag(CSM_RF_CHAT_MESSAGES))
+	// clang-format off
+	if (getClient(L)->checkCSMRestrictionFlag(
+			CSMRestrictionFlags::CSM_RF_CHAT_MESSAGES))
 		return 0;
+	// clang-format on
 
 	std::string message = luaL_checkstring(L, 1);
 	getClient(L)->sendChatMessage(utf8_to_wide(message));
@@ -147,8 +116,12 @@ int ModApiClient::l_clear_out_chat_queue(lua_State *L)
 // get_player_names()
 int ModApiClient::l_get_player_names(lua_State *L)
 {
-	if (checkCSMRestrictionFlag(CSM_RF_READ_PLAYERINFO))
+	// clang-format off
+	if (getClient(L)->checkCSMRestrictionFlag(
+			CSMRestrictionFlags::CSM_RF_READ_PLAYERINFO)) {
 		return 0;
+	}
+	// clang-format on
 
 	const std::list<std::string> &plist = getClient(L)->getConnectedPlayerNames();
 	lua_createtable(L, plist.size(), 0);
@@ -208,7 +181,7 @@ int ModApiClient::l_gettext(lua_State *L)
 	return 1;
 }
 
-// get_node_or_nil(pos)
+// get_node(pos)
 // pos = {x=num, y=num, z=num}
 int ModApiClient::l_get_node_or_nil(lua_State *L)
 {
@@ -217,7 +190,7 @@ int ModApiClient::l_get_node_or_nil(lua_State *L)
 
 	// Do it
 	bool pos_ok;
-	MapNode n = getClient(L)->CSMGetNode(pos, &pos_ok);
+	MapNode n = getClient(L)->getNode(pos, &pos_ok);
 	if (pos_ok) {
 		// Return node
 		pushnode(L, n, getClient(L)->ndef());
@@ -227,47 +200,41 @@ int ModApiClient::l_get_node_or_nil(lua_State *L)
 	return 1;
 }
 
-// get_langauge()
 int ModApiClient::l_get_language(lua_State *L)
 {
-#ifdef _WIN32
-	char *locale = setlocale(LC_ALL, NULL);
-#else
-	char *locale = setlocale(LC_MESSAGES, NULL);
-#endif
-	std::string lang = gettext("LANG_CODE");
-	if (lang == "LANG_CODE")
-		lang = "";
-
+	char *locale = setlocale(LC_ALL, "");
 	lua_pushstring(L, locale);
-	lua_pushstring(L, lang.c_str());
-	return 2;
+	return 1;
+}
+
+int ModApiClient::l_get_wielded_item(lua_State *L)
+{
+	Client *client = getClient(L);
+	LocalPlayer *player = client->getEnv().getLocalPlayer();
+	if (!player)
+		return 0;
+
+	ItemStack selected_item;
+	player->getWieldedItem(&selected_item, nullptr);
+	LuaItemStack::create(L, selected_item);
+	return 1;
 }
 
 // get_meta(pos)
 int ModApiClient::l_get_meta(lua_State *L)
 {
 	v3s16 p = read_v3s16(L, 1);
-
-	// check restrictions first
-	bool pos_ok;
-	getClient(L)->CSMGetNode(p, &pos_ok);
-	if (!pos_ok)
-		return 0;
-
-	NodeMetadata *meta = getEnv(L)->getMap().getNodeMetadata(p);
+	NodeMetadata *meta = getClient(L)->getEnv().getMap().getNodeMetadata(p);
 	NodeMetaRef::createClient(L, meta);
 	return 1;
 }
 
-// sound_play(spec, parameters)
 int ModApiClient::l_sound_play(lua_State *L)
 {
 	ISoundManager *sound = getClient(L)->getSoundManager();
 
 	SimpleSoundSpec spec;
 	read_soundspec(L, 1, spec);
-
 	float gain = 1.0f;
 	float pitch = 1.0f;
 	bool looped = false;
@@ -289,29 +256,18 @@ int ModApiClient::l_sound_play(lua_State *L)
 		}
 	}
 
-	handle = sound->playSound(spec.name, looped, gain * spec.gain, spec.fade, pitch);
+	handle = sound->playSound(spec.name, looped, gain * spec.gain, 0.0f, pitch);
 	lua_pushinteger(L, handle);
 
 	return 1;
 }
 
-// sound_stop(handle)
 int ModApiClient::l_sound_stop(lua_State *L)
 {
-	s32 handle = luaL_checkinteger(L, 1);
+	u32 handle = luaL_checkinteger(L, 1);
 
 	getClient(L)->getSoundManager()->stopSound(handle);
 
-	return 0;
-}
-
-// sound_fade(handle, step, gain)
-int ModApiClient::l_sound_fade(lua_State *L)
-{
-	s32 handle = luaL_checkinteger(L, 1);
-	float step = readParam<float>(L, 2);
-	float gain = readParam<float>(L, 3);
-	getClient(L)->getSoundManager()->fadeSound(handle, step, gain);
 	return 0;
 }
 
@@ -341,8 +297,11 @@ int ModApiClient::l_get_item_def(lua_State *L)
 	IItemDefManager *idef = gdef->idef();
 	assert(idef);
 
-	if (checkCSMRestrictionFlag(CSM_RF_READ_ITEMDEFS))
+	// clang-format off
+	if (getClient(L)->checkCSMRestrictionFlag(
+			CSMRestrictionFlags::CSM_RF_READ_ITEMDEFS))
 		return 0;
+	// clang-format on
 
 	if (!lua_isstring(L, 1))
 		return 0;
@@ -369,8 +328,11 @@ int ModApiClient::l_get_node_def(lua_State *L)
 	if (!lua_isstring(L, 1))
 		return 0;
 
-	if (checkCSMRestrictionFlag(CSM_RF_READ_NODEDEFS))
+	// clang-format off
+	if (getClient(L)->checkCSMRestrictionFlag(
+			CSMRestrictionFlags::CSM_RF_READ_NODEDEFS))
 		return 0;
+	// clang-format on
 
 	std::string name = readParam<std::string>(L, 1);
 	const ContentFeatures &cf = ndef->get(ndef->getId(name));
@@ -382,7 +344,6 @@ int ModApiClient::l_get_node_def(lua_State *L)
 	return 1;
 }
 
-// get_privilege_list()
 int ModApiClient::l_get_privilege_list(lua_State *L)
 {
 	const Client *client = getClient(L);
@@ -401,23 +362,9 @@ int ModApiClient::l_get_builtin_path(lua_State *L)
 	return 1;
 }
 
-// get_csm_restrictions()
-int ModApiClient::l_get_csm_restrictions(lua_State *L)
-{
-	u64 flags = getClient(L)->getCSMRestrictionFlags();
-	const CSMFlagDesc *flagdesc = flagdesc_csm_restriction;
-
-	lua_newtable(L);
-	for (int i = 0; flagdesc[i].name; i++) {
-		setboolfield(L, -1, flagdesc[i].name, !!(flags & flagdesc[i].flag));
-	}
-	return 1;
-}
-
 void ModApiClient::Initialize(lua_State *L, int top)
 {
 	API_FCT(get_current_modname);
-	API_FCT(get_modpath);
 	API_FCT(print);
 	API_FCT(display_chat_message);
 	API_FCT(send_chat_message);
@@ -429,16 +376,15 @@ void ModApiClient::Initialize(lua_State *L, int top)
 	API_FCT(send_respawn);
 	API_FCT(gettext);
 	API_FCT(get_node_or_nil);
+	API_FCT(get_wielded_item);
 	API_FCT(disconnect);
 	API_FCT(get_meta);
 	API_FCT(sound_play);
 	API_FCT(sound_stop);
-	API_FCT(sound_fade);
 	API_FCT(get_server_info);
 	API_FCT(get_item_def);
 	API_FCT(get_node_def);
 	API_FCT(get_privilege_list);
 	API_FCT(get_builtin_path);
 	API_FCT(get_language);
-	API_FCT(get_csm_restrictions);
 }

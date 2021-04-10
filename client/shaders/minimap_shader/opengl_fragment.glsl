@@ -2,12 +2,9 @@ uniform sampler2D baseTexture;
 uniform sampler2D normalTexture;
 uniform vec3 yawVec;
 
-varying lowp vec4 varColor;
-varying mediump vec2 varTexCoord;
-
 void main (void)
 {
-	vec2 uv = varTexCoord.st;
+	vec2 uv = gl_TexCoord[0].st;
 
 	//texture sampling rate
 	const float step = 1.0 / 256.0;
@@ -30,6 +27,6 @@ void main (void)
 
 	vec3 color = (1.1 * diffuse + 0.05 * height + 0.5 * specular) * base.rgb;
 	vec4 col = vec4(color.rgb, base.a);
-	col *= varColor;
+	col *= gl_Color;
 	gl_FragColor = vec4(col.rgb, base.a);
 }

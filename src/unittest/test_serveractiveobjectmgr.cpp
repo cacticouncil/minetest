@@ -148,25 +148,13 @@ void TestServerActiveObjectMgr::testGetObjectsInsideRadius()
 		saomgr.registerObject(new TestServerActiveObject(p));
 	}
 
-	std::vector<ServerActiveObject *> result;
-	saomgr.getObjectsInsideRadius(v3f(), 50, result, nullptr);
+	std::vector<u16> result;
+	saomgr.getObjectsInsideRadius(v3f(), 50, result);
 	UASSERTCMP(int, ==, result.size(), 1);
 
 	result.clear();
-	saomgr.getObjectsInsideRadius(v3f(), 750, result, nullptr);
+	saomgr.getObjectsInsideRadius(v3f(), 750, result);
 	UASSERTCMP(int, ==, result.size(), 2);
-
-	result.clear();
-	saomgr.getObjectsInsideRadius(v3f(), 750000, result, nullptr);
-	UASSERTCMP(int, ==, result.size(), 5);
-
-	result.clear();
-	auto include_obj_cb = [](ServerActiveObject *obj) {
-		return (obj->getBasePosition().X != 10);
-	};
-
-	saomgr.getObjectsInsideRadius(v3f(), 750000, result, include_obj_cb);
-	UASSERTCMP(int, ==, result.size(), 4);
 
 	clearSAOMgr(&saomgr);
 }

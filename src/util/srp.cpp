@@ -1015,10 +1015,10 @@ void  srp_user_process_challenge(struct SRPUser *usr,
 			goto cleanup_and_exit;
 
 		*bytes_M = usr->M;
-		*len_M = hash_length(usr->hash_alg);
+		if (len_M) *len_M = hash_length(usr->hash_alg);
 	} else {
 		*bytes_M = NULL;
-		*len_M = 0;
+		if (len_M) *len_M = 0;
 	}
 
 cleanup_and_exit:

@@ -115,8 +115,7 @@ bool ScriptApiItem::item_OnUse(ItemStack &item,
 	return true;
 }
 
-bool ScriptApiItem::item_OnSecondaryUse(ItemStack &item,
-		ServerActiveObject *user, const PointedThing &pointed)
+bool ScriptApiItem::item_OnSecondaryUse(ItemStack &item, ServerActiveObject *user)
 {
 	SCRIPTAPI_PRECHECKHEADER
 
@@ -127,6 +126,8 @@ bool ScriptApiItem::item_OnSecondaryUse(ItemStack &item,
 
 	LuaItemStack::create(L, item);
 	objectrefGetOrCreate(L, user);
+	PointedThing pointed;
+	pointed.type = POINTEDTHING_NOTHING;
 	pushPointedThing(pointed);
 	PCALL_RES(lua_pcall(L, 3, 1, error_handler));
 	if (!lua_isnil(L, -1)) {

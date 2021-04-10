@@ -1,10 +1,9 @@
-varying lowp vec4 varColor;
-varying mediump vec2 varTexCoord;
+uniform mat4 mWorldViewProj;
 
 void main(void)
 {
-	varTexCoord = inTexCoord0.st;
-	gl_Position = mWorldViewProj * inVertexPosition;
+	gl_TexCoord[0] = gl_MultiTexCoord0;
+	gl_Position = mWorldViewProj * gl_Vertex;
 
-	varColor = inVertexColor;
+	gl_FrontColor = gl_BackColor = gl_Color;
 }

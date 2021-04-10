@@ -49,8 +49,8 @@ void NodeMetadata::serialize(std::ostream &os, u8 version, bool disk) const
 		if (!disk && priv)
 			continue;
 
-		os << serializeString16(sv.first);
-		os << serializeString32(sv.second);
+		os << serializeString(sv.first);
+		os << serializeLongString(sv.second);
 		if (version >= 2)
 			writeU8(os, (priv) ? 1 : 0);
 	}
@@ -63,8 +63,8 @@ void NodeMetadata::deSerialize(std::istream &is, u8 version)
 	clear();
 	int num_vars = readU32(is);
 	for(int i=0; i<num_vars; i++){
-		std::string name = deSerializeString16(is);
-		std::string var = deSerializeString32(is);
+		std::string name = deSerializeString(is);
+		std::string var = deSerializeLongString(is);
 		m_stringvars[name] = var;
 		if (version >= 2) {
 			if (readU8(is) == 1)
@@ -206,9 +206,10 @@ NodeMetadataList::~NodeMetadataList()
 std::vector<v3s16> NodeMetadataList::getAllKeys()
 {
 	std::vector<v3s16> keys;
-	keys.reserve(m_data.size());
-	for (const auto &it : m_data)
-		keys.push_back(it.first);
+
+	NodeMetadataMap::const_iterator it;
+	for (it = m_data.begin(); it != m_data.end(); ++it)
+		keys.push_back(it->first);
 
 	return keys;
 }
@@ -217,7 +218,7 @@ NodeMetadata *NodeMetadataList::get(v3s16 p)
 {
 	NodeMetadataMap::const_iterator n = m_data.find(p);
 	if (n == m_data.end())
-		return nullptr;
+		return NULL;
 	return n->second;
 }
 
@@ -234,7 +235,7 @@ void NodeMetadataList::remove(v3s16 p)
 void NodeMetadataList::set(v3s16 p, NodeMetadata *d)
 {
 	remove(p);
-	m_data.emplace(p, d);
+	m_data.insert(std::make_pair(p, d));
 }
 
 void NodeMetadataList::clear()
@@ -250,8 +251,9 @@ void NodeMetadataList::clear()
 int NodeMetadataList::countNonEmpty() const
 {
 	int n = 0;
-	for (const auto &it : m_data) {
-		if (!it.second->empty())
+	NodeMetadataMap::const_iterator it;
+	for (it = m_data.begin(); it != m_data.end(); ++it) {
+		if (!it->second->empty())
 			n++;
 	}
 	return n;

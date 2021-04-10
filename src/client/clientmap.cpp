@@ -31,43 +31,12 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <algorithm>
 #include "client/renderingengine.h"
 
-// struct MeshBufListList
-void MeshBufListList::clear()
-{
-	for (auto &list : lists)
-		list.clear();
-}
-
-void MeshBufListList::add(scene::IMeshBuffer *buf, v3s16 position, u8 layer)
-{
-	// Append to the correct layer
-	std::vector<MeshBufList> &list = lists[layer];
-	const video::SMaterial &m = buf->getMaterial();
-	for (MeshBufList &l : list) {
-		// comparing a full material is quite expensive so we don't do it if
-		// not even first texture is equal
-		if (l.m.TextureLayer[0].Texture != m.TextureLayer[0].Texture)
-			continue;
-
-		if (l.m == m) {
-			l.bufs.emplace_back(position, buf);
-			return;
-		}
-	}
-	MeshBufList l;
-	l.m = m;
-	l.bufs.emplace_back(position, buf);
-	list.emplace_back(l);
-}
-
-// ClientMap
-
 ClientMap::ClientMap(
 		Client *client,
 		MapDrawControl &control,
 		s32 id
 ):
-	Map(client),
+	Map(dout_client, client),
 	scene::ISceneNode(RenderingEngine::get_scene_manager()->getRootSceneNode(),
 		RenderingEngine::get_scene_manager(), id),
 	m_client(client),
@@ -153,23 +122,20 @@ void ClientMap::updateDrawList()
 	}
 	m_drawlist.clear();
 
-	const v3f camera_position = m_camera_position;
-	const v3f camera_direction = m_camera_direction;
+	v3f camera_position = m_camera_position;
+	v3f camera_direction = m_camera_direction;
+	f32 camera_fov = m_camera_fov;
 
 	// Use a higher fov to accomodate faster camera movements.
 	// Blocks are cropped better when they are drawn.
-	const f32 camera_fov = m_camera_fov * 1.1f;
+	// Or maybe they aren't? Well whatever.
+	camera_fov *= 1.2;
 
 	v3s16 cam_pos_nodes = floatToInt(camera_position, BS);
 	v3s16 p_blocks_min;
 	v3s16 p_blocks_max;
 	getBlocksInViewRange(cam_pos_nodes, &p_blocks_min, &p_blocks_max);
 
-	// Read the vision range, unless unlimited range is enabled.
-	float range = m_control.range_all ? 1e7 : m_control.wanted_range;
-
-	// Number of blocks currently loaded by the client
-	u32 blocks_loaded = 0;
 	// Number of blocks with mesh in rendering range
 	u32 blocks_in_range_with_mesh = 0;
 	// Number of blocks occlusion culled
@@ -185,7 +151,6 @@ void ClientMap::updateDrawList()
 			occlusion_culling_enabled = false;
 	}
 
-
 	// Uncomment to debug occluded blocks in the wireframe mode
 	// TODO: Include this as a flag for an extended debugging setting
 	//if (occlusion_culling_enabled && m_control.show_wireframe)
@@ -195,7 +160,6 @@ void ClientMap::updateDrawList()
 		MapSector *sector = sector_it.second;
 		v2s16 sp = sector->getPos();
 
-		blocks_loaded += sector->size();
 		if (!m_control.range_all) {
 			if (sp.X < p_blocks_min.X || sp.X > p_blocks_max.X ||
 					sp.Y < p_blocks_min.Z || sp.Y > p_blocks_max.Z)
@@ -217,39 +181,42 @@ void ClientMap::updateDrawList()
 				if not seen on display
 			*/
 
-			if (!block->mesh) {
-				// Ignore if mesh doesn't exist
+			if (block->mesh)
+				block->mesh->updateCameraOffset(m_camera_offset);
+
+			float range = 100000 * BS;
+			if (!m_control.range_all)
+				range = m_control.wanted_range * BS;
+
+			float d = 0.0;
+			if (!isBlockInSight(block->getPos(), camera_position,
+					camera_direction, camera_fov, range, &d))
 				continue;
-			}
 
-			v3s16 block_coord = block->getPos();
-			v3s16 block_position = block->getPosRelative() + MAP_BLOCKSIZE / 2;
 
-			// First, perform a simple distance check, with a padding of one extra block.
-			if (!m_control.range_all &&
-					block_position.getDistanceFrom(cam_pos_nodes) > range + MAP_BLOCKSIZE)
-				continue; // Out of range, skip.
+			/*
+				Ignore if mesh doesn't exist
+			*/
+			if (!block->mesh)
+				continue;
 
-			// Keep the block alive as long as it is in range.
-			block->resetUsageTimer();
 			blocks_in_range_with_mesh++;
 
-			// Frustum culling
-			float d = 0.0;
-			if (!isBlockInSight(block_coord, camera_position,
-					camera_direction, camera_fov, range * BS, &d))
-				continue;
-
-			// Occlusion culling
+			/*
+				Occlusion culling
+			*/
 			if ((!m_control.range_all && d > m_control.wanted_range * BS) ||
 					(occlusion_culling_enabled && isBlockOccluded(block, cam_pos_nodes))) {
 				blocks_occlusion_culled++;
 				continue;
 			}
 
+			// This block is in range. Reset usage timer.
+			block->resetUsageTimer();
+
 			// Add to set
 			block->refGrab();
-			m_drawlist[block_coord] = block;
+			m_drawlist[block->getPos()] = block;
 
 			sector_blocks_drawn++;
 		} // foreach sectorblocks
@@ -261,8 +228,51 @@ void ClientMap::updateDrawList()
 	g_profiler->avg("MapBlock meshes in range [#]", blocks_in_range_with_mesh);
 	g_profiler->avg("MapBlocks occlusion culled [#]", blocks_occlusion_culled);
 	g_profiler->avg("MapBlocks drawn [#]", m_drawlist.size());
-	g_profiler->avg("MapBlocks loaded [#]", blocks_loaded);
 }
+
+struct MeshBufList
+{
+	video::SMaterial m;
+	std::vector<scene::IMeshBuffer*> bufs;
+};
+
+struct MeshBufListList
+{
+	/*!
+	 * Stores the mesh buffers of the world.
+	 * The array index is the material's layer.
+	 * The vector part groups vertices by material.
+	 */
+	std::vector<MeshBufList> lists[MAX_TILE_LAYERS];
+
+	void clear()
+	{
+		for (auto &list : lists)
+			list.clear();
+	}
+
+	void add(scene::IMeshBuffer *buf, u8 layer)
+	{
+		// Append to the correct layer
+		std::vector<MeshBufList> &list = lists[layer];
+		const video::SMaterial &m = buf->getMaterial();
+		for (MeshBufList &l : list) {
+			// comparing a full material is quite expensive so we don't do it if
+			// not even first texture is equal
+			if (l.m.TextureLayer[0].Texture != m.TextureLayer[0].Texture)
+				continue;
+
+			if (l.m == m) {
+				l.bufs.push_back(buf);
+				return;
+			}
+		}
+		MeshBufList l;
+		l.m = m;
+		l.bufs.push_back(buf);
+		list.push_back(l);
+	}
+};
 
 void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 {
@@ -283,18 +293,19 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 	/*
 		Get animation parameters
 	*/
-	const float animation_time = m_client->getAnimationTime();
-	const int crack = m_client->getCrackLevel();
-	const u32 daynight_ratio = m_client->getEnv().getDayNightRatio();
+	float animation_time = m_client->getAnimationTime();
+	int crack = m_client->getCrackLevel();
+	u32 daynight_ratio = m_client->getEnv().getDayNightRatio();
 
-	const v3f camera_position = m_camera_position;
+	v3f camera_position = m_camera_position;
+	v3f camera_direction = m_camera_direction;
+	f32 camera_fov = m_camera_fov;
 
 	/*
 		Get all blocks and draw all visible ones
 	*/
 
 	u32 vertex_count = 0;
-	u32 drawcall_count = 0;
 
 	// For limiting number of mesh animations per frame
 	u32 mesh_animate_count = 0;
@@ -307,17 +318,17 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 	MeshBufListList drawbufs;
 
 	for (auto &i : m_drawlist) {
-		v3s16 block_pos = i.first;
 		MapBlock *block = i.second;
 
 		// If the mesh of the block happened to get deleted, ignore it
 		if (!block->mesh)
 			continue;
 
-		v3f block_pos_r = intToFloat(block->getPosRelative() + MAP_BLOCKSIZE / 2, BS);
-		float d = camera_position.getDistanceFrom(block_pos_r);
-		d = MYMAX(0,d - BLOCK_MAX_RADIUS);
-		
+		float d = 0.0;
+		if (!isBlockInSight(block->getPos(), camera_position,
+				camera_direction, camera_fov, 100000 * BS, &d))
+			continue;
+
 		// Mesh animation
 		if (pass == scene::ESNRP_SOLID) {
 			//MutexAutoLock lock(block->mesh_mutex);
@@ -372,7 +383,7 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 						material.setFlag(video::EMF_WIREFRAME,
 							m_control.show_wireframe);
 
-						drawbufs.add(buf, block_pos, layer);
+						drawbufs.add(buf, layer);
 					}
 				}
 			}
@@ -380,9 +391,6 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 	}
 
 	TimeTaker draw("Drawing mesh buffers");
-
-	core::matrix4 m; // Model matrix
-	v3f offset = intToFloat(m_camera_offset, BS);
 
 	// Render all layers in order
 	for (auto &lists : drawbufs.lists) {
@@ -395,14 +403,7 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 			}
 			driver->setMaterial(list.m);
 
-			drawcall_count += list.bufs.size();
-			for (auto &pair : list.bufs) {
-				scene::IMeshBuffer *buf = pair.second;
-
-				v3f block_wpos = intToFloat(pair.first * MAP_BLOCKSIZE, BS);
-				m.setTranslation(block_wpos - offset);
-
-				driver->setTransform(video::ETS_WORLD, m);
+			for (scene::IMeshBuffer *buf : list.bufs) {
 				driver->drawMeshBuffer(buf);
 				vertex_count += buf->getVertexCount();
 			}
@@ -416,7 +417,6 @@ void ClientMap::renderMap(video::IVideoDriver* driver, s32 pass)
 	}
 
 	g_profiler->avg(prefix + "vertices drawn [#]", vertex_count);
-	g_profiler->avg(prefix + "drawcalls [#]", drawcall_count);
 }
 
 static bool getVisibleBrightness(Map *map, const v3f &p0, v3f dir, float step,
@@ -499,12 +499,12 @@ int ClientMap::getBackgroundBrightness(float max_d, u32 daylight_factor,
 	static v3f z_directions[50] = {
 		v3f(-100, 0, 0)
 	};
-	static f32 z_offsets[50] = {
+	static f32 z_offsets[sizeof(z_directions)/sizeof(*z_directions)] = {
 		-1000,
 	};
 
-	if (z_directions[0].X < -99) {
-		for (u32 i = 0; i < ARRLEN(z_directions); i++) {
+	if(z_directions[0].X < -99){
+		for(u32 i=0; i<sizeof(z_directions)/sizeof(*z_directions); i++){
 			// Assumes FOV of 72 and 16/9 aspect ratio
 			z_directions[i] = v3f(
 				0.02 * myrand_range(-100, 100),
@@ -520,8 +520,7 @@ int ClientMap::getBackgroundBrightness(float max_d, u32 daylight_factor,
 	if(sunlight_min_d > 35*BS)
 		sunlight_min_d = 35*BS;
 	std::vector<int> values;
-	values.reserve(ARRLEN(z_directions));
-	for (u32 i = 0; i < ARRLEN(z_directions); i++) {
+	for(u32 i=0; i<sizeof(z_directions)/sizeof(*z_directions); i++){
 		v3f z_dir = z_directions[i];
 		core::CMatrix4<f32> a;
 		a.buildRotateFromTo(v3f(0,1,0), z_dir);
@@ -609,3 +608,5 @@ void ClientMap::PrintInfo(std::ostream &out)
 {
 	out<<"ClientMap: ";
 }
+
+

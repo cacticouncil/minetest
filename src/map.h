@@ -31,7 +31,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "voxel.h"
 #include "modifiedstate.h"
 #include "util/container.h"
-#include "util/metricsbackend.h"
 #include "nodetimer.h"
 #include "map_settings_manager.h"
 #include "debug.h"
@@ -46,7 +45,6 @@ class NodeMetadata;
 class IGameDef;
 class IRollbackManager;
 class EmergeManager;
-class MetricsBackend;
 class ServerEnvironment;
 struct BlockMakeData;
 
@@ -123,7 +121,7 @@ class Map /*: public NodeContainer*/
 {
 public:
 
-	Map(IGameDef *gamedef);
+	Map(std::ostream &dout, IGameDef *gamedef);
 	virtual ~Map();
 	DISABLE_CLASS_COPY(Map);
 
@@ -149,6 +147,8 @@ public:
 	MapSector * getSectorNoGenerateNoLock(v2s16 p2d);
 	// Same as the above (there exists no lock anymore)
 	MapSector * getSectorNoGenerate(v2s16 p2d);
+	// Gets an existing sector or creates an empty one
+	//MapSector * getSectorCreate(v2s16 p2d);
 
 	/*
 		This is overloaded by ClientMap and ServerMap to allow
@@ -267,6 +267,11 @@ public:
 	void removeNodeTimer(v3s16 p);
 
 	/*
+		Misc.
+	*/
+	std::map<v2s16, MapSector*> *getSectorsPtr(){return &m_sectors;}
+
+	/*
 		Variables
 	*/
 
@@ -275,6 +280,8 @@ public:
 	bool isBlockOccluded(MapBlock *block, v3s16 cam_pos_nodes);
 protected:
 	friend class LuaVoxelManip;
+
+	std::ostream &m_dout; // A bit deprecated, could be removed
 
 	IGameDef *m_gamedef;
 
@@ -317,7 +324,7 @@ public:
 	/*
 		savedir: directory to which map data should be saved
 	*/
-	ServerMap(const std::string &savedir, IGameDef *gamedef, EmergeManager *emerge, MetricsBackend *mb);
+	ServerMap(const std::string &savedir, IGameDef *gamedef, EmergeManager *emerge);
 	~ServerMap();
 
 	s32 mapType() const
@@ -365,10 +372,28 @@ public:
 	*/
 	MapBlock *getBlockOrEmerge(v3s16 p3d);
 
+	// Helper for placing objects on ground level
+	s16 findGroundLevel(v2s16 p2d);
+
+	/*
+		Misc. helper functions for fiddling with directory and file
+		names when saving
+	*/
+	void createDirs(const std::string &path);
+	// returns something like "map/sectors/xxxxxxxx"
+	std::string getSectorDir(v2s16 pos, int layout = 2);
+	// dirname: final directory name
+	v2s16 getSectorPos(const std::string &dirname);
+	v3s16 getBlockPos(const std::string &sectordir, const std::string &blockfile);
+	static std::string getBlockFilename(v3s16 p);
+
 	/*
 		Database functions
 	*/
 	static MapDatabase *createDatabase(const std::string &name, const std::string &savedir, Settings &conf);
+
+	// Returns true if the database file does not exist
+	bool loadFromFolders();
 
 	// Call these before and after saving of blocks
 	void beginSave();
@@ -381,7 +406,10 @@ public:
 	MapgenParams *getMapgenParams();
 
 	bool saveBlock(MapBlock *block);
-	static bool saveBlock(MapBlock *block, MapDatabase *db, int compression_level = -1);
+	static bool saveBlock(MapBlock *block, MapDatabase *db);
+	// This will generate a sector with getSector if not found.
+	void loadBlock(const std::string &sectordir, const std::string &blockfile,
+			MapSector *sector, bool save_after_load=false);
 	MapBlock* loadBlock(v3s16 p);
 	// Database version
 	void loadBlock(std::string *blob, v3s16 p3d, MapSector *sector, bool save_after_load=false);
@@ -396,6 +424,7 @@ public:
 	bool isSavingEnabled(){ return m_map_saving_enabled; }
 
 	u64 getSeed();
+	s16 getWaterLevel();
 
 	/*!
 	 * Fixes lighting in one map block.
@@ -416,9 +445,13 @@ private:
 	std::string m_savedir;
 	bool m_map_saving_enabled;
 
-	int m_map_compression_level;
-
-	std::set<v3s16> m_chunks_in_progress;
+#if 0
+	// Chunk size in MapSectors
+	// If 0, chunks are disabled.
+	s16 m_chunksize;
+	// Chunks
+	core::map<v2s16, MapChunk*> m_chunks;
+#endif
 
 	/*
 		Metadata is re-written on disk only if this is true.
@@ -427,8 +460,6 @@ private:
 	bool m_map_metadata_changed = true;
 	MapDatabase *dbase = nullptr;
 	MapDatabase *dbase_ro = nullptr;
-
-	MetricCounterPtr m_save_time_counter;
 };
 
 

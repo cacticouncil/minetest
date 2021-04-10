@@ -120,8 +120,15 @@ function core.serialize(x)
 		elseif tp == "function" then
 			return string.format("loadstring(%q)", string.dump(x))
 		elseif tp == "number"   then
-			-- Serialize numbers reversibly with string.format
-			return string.format("%.17g", x)
+			-- Serialize integers with string.format to prevent
+			-- scientific notation, which doesn't preserve
+			-- precision and breaks things like node position
+			-- hashes.  Serialize floats normally.
+			if math.floor(x) == x then
+				return string.format("%d", x)
+			else
+				return tostring(x)
+			end
 		elseif tp == "table" then
 			local vals = {}
 			local idx_dumped = {}
@@ -170,16 +177,13 @@ end
 
 -- Deserialization
 
-local function safe_loadstring(...)
-	local func, err = loadstring(...)
-	if func then
-		setfenv(func, {})
-		return func
-	end
-	return nil, err
-end
+local env = {
+	loadstring = loadstring,
+}
 
-local function dummy_func() end
+local safe_env = {
+	loadstring = function() end,
+}
 
 function core.deserialize(str, safe)
 	if type(str) ~= "string" then
@@ -191,10 +195,7 @@ function core.deserialize(str, safe)
 	end
 	local f, err = loadstring(str)
 	if not f then return nil, err end
-
-	-- The environment is recreated every time so deseralized code cannot
-	-- pollute it with permanent references.
-	setfenv(f, {loadstring = safe and dummy_func or safe_loadstring})
+	setfenv(f, safe and safe_env or env)
 
 	local good, data = pcall(f)
 	if good then
@@ -203,3 +204,17 @@ function core.deserialize(str, safe)
 		return nil, data
 	end
 end
+
+
+-- Unit tests
+local test_in = {cat={sound="nyan", speed=400}, dog={sound="woof"}}
+local test_out = core.deserialize(core.serialize(test_in))
+
+assert(test_in.cat.sound == test_out.cat.sound)
+assert(test_in.cat.speed == test_out.cat.speed)
+assert(test_in.dog.sound == test_out.dog.sound)
+
+test_in = {escape_chars="\n\r\t\v\\\"\'", non_european="θשׁ٩∂"}
+test_out = core.deserialize(core.serialize(test_in))
+assert(test_in.escape_chars == test_out.escape_chars)
+assert(test_in.non_european == test_out.non_european)

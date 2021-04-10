@@ -34,8 +34,7 @@ public:
 
 	~NetworkPacket();
 
-	void putRawPacket(const u8 *data, u32 datasize, session_t peer_id);
-	void clear();
+	void putRawPacket(u8 *data, u32 datasize, session_t peer_id);
 
 	// Getters
 	u32 getSize() const { return m_datasize; }
@@ -64,6 +63,7 @@ public:
 
 	std::string readLongString();
 
+	char getChar(u32 offset);
 	NetworkPacket &operator>>(char &dst);
 	NetworkPacket &operator<<(char src);
 
