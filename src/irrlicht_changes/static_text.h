@@ -34,7 +34,8 @@ namespace gui
 	{
 	public:
 
-		//! constructor
+		// StaticText is translated by EnrichedString.
+		// No need to use translate_string()
 		StaticText(const EnrichedString &text, bool border, IGUIEnvironment* environment,
 			IGUIElement* parent, s32 id, const core::rect<s32>& rectangle,
 			bool background = false);
@@ -133,10 +134,11 @@ namespace gui
 		virtual void setTextAlignment(EGUI_ALIGNMENT horizontal, EGUI_ALIGNMENT vertical);
 
 		//! Gets the override color
-		#if IRRLICHT_VERSION_MAJOR == 1 && IRRLICHT_VERSION_MINOR <= 7
-		virtual const video::SColor& getOverrideColor() const;
-		#else
 		virtual video::SColor getOverrideColor() const;
+
+		#if IRRLICHT_VERSION_MAJOR == 1 && IRRLICHT_VERSION_MINOR > 8
+		//! Gets the currently used text color
+		virtual video::SColor getActiveColor() const;
 		#endif
 
 		//! Sets if the static text should use the overide color or the
@@ -201,23 +203,20 @@ namespace gui
 	private:
 
 		//! Breaks the single text line.
-		void breakText();
+		void updateText();
 
 		EGUI_ALIGNMENT HAlign, VAlign;
 		bool Border;
-		bool OverrideColorEnabled;
-		bool OverrideBGColorEnabled;
 		bool WordWrap;
 		bool Background;
 		bool RestrainTextInside;
 		bool RightToLeft;
 
-		video::SColor OverrideColor, BGColor;
 		gui::IGUIFont* OverrideFont;
 		gui::IGUIFont* LastBreakFont; // stored because: if skin changes, line break must be recalculated.
 
-		EnrichedString cText;
-		core::array< EnrichedString > BrokenText;
+		EnrichedString ColoredText;
+		std::vector<EnrichedString> BrokenText;
 	};
 
 
@@ -274,10 +273,7 @@ inline void setStaticText(irr::gui::IGUIStaticText *static_text, const EnrichedS
 
 inline void setStaticText(irr::gui::IGUIStaticText *static_text, const wchar_t *text)
 {
-	auto color = static_text->isOverrideColorEnabled()
-				     ? static_text->getOverrideColor()
-				     : irr::video::SColor(255, 255, 255, 255);
-	setStaticText(static_text, EnrichedString(text, color));
+	setStaticText(static_text, EnrichedString(text, static_text->getOverrideColor()));
 }
 
 #endif // _IRR_COMPILE_WITH_GUI_

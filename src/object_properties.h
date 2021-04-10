@@ -24,6 +24,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include <iostream>
 #include <map>
 #include <vector>
+#include "util/Optional.h"
 
 struct ObjectProperties
 {
@@ -31,7 +32,6 @@ struct ObjectProperties
 	u16 breath_max = 0;
 	bool physical = false;
 	bool collideWithObjects = true;
-	float weight = 5.0f;
 	// Values are BS=1
 	aabb3f collisionbox = aabb3f(-0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f);
 	aabb3f selectionbox = aabb3f(-0.5f, -0.5f, -0.5f, 0.5f, 0.5f, 0.5f);
@@ -40,6 +40,7 @@ struct ObjectProperties
 	std::string mesh = "";
 	v3f visual_size = v3f(1, 1, 1);
 	std::vector<std::string> textures;
+	std::string damage_texture_modifier = "^[brighten";
 	std::vector<video::SColor> colors;
 	v2s16 spritediv = v2s16(1, 1);
 	v2s16 initial_sprite_basepos;
@@ -53,6 +54,7 @@ struct ObjectProperties
 	s8 glow = 0;
 	std::string nametag = "";
 	video::SColor nametag_color = video::SColor(255, 255, 255, 255);
+	Optional<video::SColor> nametag_bgcolor = nullopt;
 	f32 automatic_face_movement_max_rotation_per_sec = -1.0f;
 	std::string infotext;
 	//! For dropped items, this contains item information.
@@ -61,6 +63,8 @@ struct ObjectProperties
 	float eye_height = 1.625f;
 	float zoom_fov = 0.0f;
 	bool use_texture_alpha = false;
+	bool shaded = true;
+	bool show_on_minimap = false;
 
 	ObjectProperties();
 	std::string dump();

@@ -44,7 +44,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 // log([level,] text)
 // Writes a line to the logger.
-// The one-argument version logs to infostream.
+// The one-argument version logs to LL_NONE.
 // The two-argument version accepts a log level.
 // Either the special case "deprecated" for deprecation notices, or any specified in
 // Logger::stringToLevel(name).
@@ -59,7 +59,7 @@ int ModApiUtil::l_log(lua_State *L)
 		std::string name = luaL_checkstring(L, 1);
 		text = luaL_checkstring(L, 2);
 		if (name == "deprecated") {
-			log_deprecated(L, text);
+			log_deprecated(L, text, 2);
 			return 0;
 		}
 		level = Logger::stringToLevel(name);
@@ -239,21 +239,23 @@ int ModApiUtil::l_is_yes(lua_State *L)
 	return 1;
 }
 
-// is_nan(arg)
-int ModApiUtil::l_is_nan(lua_State *L)
-{
-	NO_MAP_LOCK_REQUIRED;
-
-	lua_pushboolean(L, isNaN(L, 1));
-	return 1;
-}
-
 // get_builtin_path()
 int ModApiUtil::l_get_builtin_path(lua_State *L)
 {
 	NO_MAP_LOCK_REQUIRED;
 
 	std::string path = porting::path_share + DIR_DELIM + "builtin" + DIR_DELIM;
+	lua_pushstring(L, path.c_str());
+
+	return 1;
+}
+
+// get_user_path()
+int ModApiUtil::l_get_user_path(lua_State *L)
+{
+	NO_MAP_LOCK_REQUIRED;
+
+	std::string path = porting::path_user;
 	lua_pushstring(L, path.c_str());
 
 	return 1;
@@ -318,9 +320,13 @@ int ModApiUtil::l_decode_base64(lua_State *L)
 	NO_MAP_LOCK_REQUIRED;
 
 	size_t size;
-	const char *data = luaL_checklstring(L, 1, &size);
+	const char *d = luaL_checklstring(L, 1, &size);
+	const std::string data = std::string(d, size);
 
-	std::string out = base64_decode(std::string(data, size));
+	if (!base64_is_valid(data))
+		return 0;
+
+	std::string out = base64_decode(data);
 
 	lua_pushlstring(L, out.data(), out.size());
 	return 1;
@@ -489,9 +495,9 @@ void ModApiUtil::Initialize(lua_State *L, int top)
 	API_FCT(get_password_hash);
 
 	API_FCT(is_yes);
-	API_FCT(is_nan);
 
 	API_FCT(get_builtin_path);
+	API_FCT(get_user_path);
 
 	API_FCT(compress);
 	API_FCT(decompress);
@@ -522,7 +528,6 @@ void ModApiUtil::InitializeClient(lua_State *L, int top)
 	API_FCT(write_json);
 
 	API_FCT(is_yes);
-	API_FCT(is_nan);
 
 	API_FCT(compress);
 	API_FCT(decompress);
@@ -546,6 +551,7 @@ void ModApiUtil::InitializeAsync(lua_State *L, int top)
 	API_FCT(is_yes);
 
 	API_FCT(get_builtin_path);
+	API_FCT(get_user_path);
 
 	API_FCT(compress);
 	API_FCT(decompress);

@@ -56,6 +56,11 @@ private:
 	// timeofday: nil = current time, 0 = night, 0.5 = day
 	static int l_get_node_light(lua_State *L);
 
+	// get_natural_light(pos, timeofday)
+	// pos = {x=num, y=num, z=num}
+	// timeofday: nil = current time, 0 = night, 0.5 = day
+	static int l_get_natural_light(lua_State *L);
+
 	// place_node(pos, node)
 	// pos = {x=num, y=num, z=num}
 	static int l_place_node(lua_State *L);
@@ -101,11 +106,17 @@ private:
 	// pos = {x=num, y=num, z=num}
 	static int l_add_item(lua_State *L);
 
+	// get_connected_players()
+	static int l_get_connected_players(lua_State *L);
+
 	// get_player_by_name(name)
 	static int l_get_player_by_name(lua_State *L);
 
 	// get_objects_inside_radius(pos, radius)
 	static int l_get_objects_inside_radius(lua_State *L);
+	
+	// get_objects_in_area(pos, minp, maxp)
+	static int l_get_objects_in_area(lua_State *L);
 
 	// set_timeofday(val)
 	// val = 0...1
@@ -183,6 +194,14 @@ private:
 	// forceload_free_block(blockpos)
 	// stops forceloading a position
 	static int l_forceload_free_block(lua_State *L);
+
+	// Get a string translated server side
+	static int l_get_translated_string(lua_State * L);
+
+	/* Helpers */
+
+	static void collectNodeIds(lua_State *L, int idx,
+		const NodeDefManager *ndef, std::vector<content_t> &filter);
 
 public:
 	static void Initialize(lua_State *L, int top);

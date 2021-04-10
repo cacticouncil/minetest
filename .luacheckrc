@@ -18,9 +18,9 @@ read_globals = {
 	"profiler",
 	"Settings",
 
-	string = {fields = {"split"}},
+	string = {fields = {"split", "trim"}},
 	table  = {fields = {"copy", "getn", "indexof", "insert_all"}},
-	math   = {fields = {"hypot"}},
+	math   = {fields = {"hypot", "round"}},
 }
 
 globals = {
@@ -70,5 +70,13 @@ files["builtin/mainmenu"] = {
 
 	read_globals = {
 		"PLATFORM",
+	},
+}
+
+files["builtin/common/tests"] = {
+	read_globals = {
+		"describe",
+		"it",
+		"assert",
 	},
 }

@@ -42,8 +42,7 @@ static void font_setting_changed(const std::string &name, void *userdata)
 }
 
 /******************************************************************************/
-FontEngine::FontEngine(Settings* main_settings, gui::IGUIEnvironment* env) :
-	m_settings(main_settings),
+FontEngine::FontEngine(gui::IGUIEnvironment* env) :
 	m_env(env)
 {
 
@@ -51,29 +50,29 @@ FontEngine::FontEngine(Settings* main_settings, gui::IGUIEnvironment* env) :
 		i = (FontMode) FONT_SIZE_UNSPECIFIED;
 	}
 
-	assert(m_settings != NULL); // pre-condition
+	assert(g_settings != NULL); // pre-condition
 	assert(m_env != NULL); // pre-condition
 	assert(m_env->getSkin() != NULL); // pre-condition
 
 	readSettings();
 
-	if (m_currentMode == FM_Standard) {
-		m_settings->registerChangedCallback("font_size", font_setting_changed, NULL);
-		m_settings->registerChangedCallback("font_path", font_setting_changed, NULL);
-		m_settings->registerChangedCallback("font_shadow", font_setting_changed, NULL);
-		m_settings->registerChangedCallback("font_shadow_alpha", font_setting_changed, NULL);
-	}
-	else if (m_currentMode == FM_Fallback) {
-		m_settings->registerChangedCallback("fallback_font_size", font_setting_changed, NULL);
-		m_settings->registerChangedCallback("fallback_font_path", font_setting_changed, NULL);
-		m_settings->registerChangedCallback("fallback_font_shadow", font_setting_changed, NULL);
-		m_settings->registerChangedCallback("fallback_font_shadow_alpha", font_setting_changed, NULL);
+	if (m_currentMode != FM_Simple) {
+		g_settings->registerChangedCallback("font_size", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("font_bold", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("font_italic", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("font_path", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("font_path_bold", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("font_path_italic", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("font_path_bolditalic", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("font_shadow", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("font_shadow_alpha", font_setting_changed, NULL);
+		g_settings->registerChangedCallback("fallback_font_path", font_setting_changed, NULL);
 	}
 
-	m_settings->registerChangedCallback("mono_font_path", font_setting_changed, NULL);
-	m_settings->registerChangedCallback("mono_font_size", font_setting_changed, NULL);
-	m_settings->registerChangedCallback("screen_dpi", font_setting_changed, NULL);
-	m_settings->registerChangedCallback("gui_scaling", font_setting_changed, NULL);
+	g_settings->registerChangedCallback("mono_font_path", font_setting_changed, NULL);
+	g_settings->registerChangedCallback("mono_font_size", font_setting_changed, NULL);
+	g_settings->registerChangedCallback("screen_dpi", font_setting_changed, NULL);
+	g_settings->registerChangedCallback("gui_scaling", font_setting_changed, NULL);
 }
 
 /******************************************************************************/
@@ -96,36 +95,61 @@ void FontEngine::cleanCache()
 }
 
 /******************************************************************************/
-irr::gui::IGUIFont* FontEngine::getFont(unsigned int font_size, FontMode mode)
+irr::gui::IGUIFont *FontEngine::getFont(FontSpec spec)
 {
-	if (mode == FM_Unspecified) {
-		mode = m_currentMode;
+	return getFont(spec, false);
+}
+
+irr::gui::IGUIFont *FontEngine::getFont(FontSpec spec, bool may_fail)
+{
+	if (spec.mode == FM_Unspecified) {
+		spec.mode = m_currentMode;
 	} else if (m_currentMode == FM_Simple) {
 		// Freetype disabled -> Force simple mode
-		mode = (mode == FM_Mono || mode == FM_SimpleMono) ?
-				 FM_SimpleMono : FM_Simple;
+		spec.mode = (spec.mode == FM_Mono ||
+				spec.mode == FM_SimpleMono) ?
+				FM_SimpleMono : FM_Simple;
+		// Support for those could be added, but who cares?
+		spec.bold = false;
+		spec.italic = false;
+	} else if (spec.mode == _FM_Fallback) {
+		// Fallback font doesn't support these either
+		spec.bold = false;
+		spec.italic = false;
 	}
 
 	// Fallback to default size
-	if (font_size == FONT_SIZE_UNSPECIFIED)
-		font_size = m_default_size[mode];
+	if (spec.size == FONT_SIZE_UNSPECIFIED)
+		spec.size = m_default_size[spec.mode];
 
-	const auto &cache = m_font_cache[mode];
-	if (cache.find(font_size) == cache.end()) {
-		if (mode == FM_Simple || mode == FM_SimpleMono)
-			initSimpleFont(font_size, mode);
-		else
-			initFont(font_size, mode);
+	const auto &cache = m_font_cache[spec.getHash()];
+	auto it = cache.find(spec.size);
+	if (it != cache.end())
+		return it->second;
+
+	// Font does not yet exist
+	gui::IGUIFont *font = nullptr;
+	if (spec.mode == FM_Simple || spec.mode == FM_SimpleMono)
+		font = initSimpleFont(spec);
+	else
+		font = initFont(spec);
+
+	if (!font && !may_fail) {
+		errorstream << "Minetest cannot continue without a valid font. "
+			"Please correct the 'font_path' setting or install the font "
+			"file in the proper location." << std::endl;
+		abort();
 	}
 
-	const auto &font = cache.find(font_size);
-	return font != cache.end() ? font->second : nullptr;
+	m_font_cache[spec.getHash()][spec.size] = font;
+
+	return font;
 }
 
 /******************************************************************************/
-unsigned int FontEngine::getTextHeight(unsigned int font_size, FontMode mode)
+unsigned int FontEngine::getTextHeight(const FontSpec &spec)
 {
-	irr::gui::IGUIFont* font = getFont(font_size, mode);
+	irr::gui::IGUIFont *font = getFont(spec);
 
 	// use current skin font as fallback
 	if (font == NULL) {
@@ -137,10 +161,9 @@ unsigned int FontEngine::getTextHeight(unsigned int font_size, FontMode mode)
 }
 
 /******************************************************************************/
-unsigned int FontEngine::getTextWidth(const std::wstring& text,
-		unsigned int font_size, FontMode mode)
+unsigned int FontEngine::getTextWidth(const std::wstring &text, const FontSpec &spec)
 {
-	irr::gui::IGUIFont* font = getFont(font_size, mode);
+	irr::gui::IGUIFont *font = getFont(spec);
 
 	// use current skin font as fallback
 	if (font == NULL) {
@@ -153,9 +176,9 @@ unsigned int FontEngine::getTextWidth(const std::wstring& text,
 
 
 /** get line height for a specific font (including empty room between lines) */
-unsigned int FontEngine::getLineHeight(unsigned int font_size, FontMode mode)
+unsigned int FontEngine::getLineHeight(const FontSpec &spec)
 {
-	irr::gui::IGUIFont* font = getFont(font_size, mode);
+	irr::gui::IGUIFont *font = getFont(spec);
 
 	// use current skin font as fallback
 	if (font == NULL) {
@@ -173,22 +196,38 @@ unsigned int FontEngine::getDefaultFontSize()
 	return m_default_size[m_currentMode];
 }
 
+unsigned int FontEngine::getFontSize(FontMode mode)
+{
+	if (m_currentMode == FM_Simple) {
+		if (mode == FM_Mono || mode == FM_SimpleMono)
+			return m_default_size[FM_SimpleMono];
+		else
+			return m_default_size[FM_Simple];
+	}
+
+	if (mode == FM_Unspecified)
+		return m_default_size[FM_Standard];
+
+	return m_default_size[mode];
+}
+
 /******************************************************************************/
 void FontEngine::readSettings()
 {
 	if (USE_FREETYPE && g_settings->getBool("freetype")) {
-		m_default_size[FM_Standard] = m_settings->getU16("font_size");
-		m_default_size[FM_Fallback] = m_settings->getU16("fallback_font_size");
-		m_default_size[FM_Mono]     = m_settings->getU16("mono_font_size");
+		m_default_size[FM_Standard]  = g_settings->getU16("font_size");
+		m_default_size[_FM_Fallback] = g_settings->getU16("font_size");
+		m_default_size[FM_Mono]      = g_settings->getU16("mono_font_size");
 
-		m_currentMode = is_yes(gettext("needs_fallback_font")) ?
-				FM_Fallback : FM_Standard;
+		m_default_bold = g_settings->getBool("font_bold");
+		m_default_italic = g_settings->getBool("font_italic");
+
 	} else {
 		m_currentMode = FM_Simple;
 	}
 
-	m_default_size[FM_Simple]       = m_settings->getU16("font_size");
-	m_default_size[FM_SimpleMono]   = m_settings->getU16("mono_font_size");
+	m_default_size[FM_Simple]       = g_settings->getU16("font_size");
+	m_default_size[FM_SimpleMono]   = g_settings->getU16("mono_font_size");
 
 	cleanCache();
 	updateFontCache();
@@ -204,7 +243,7 @@ void FontEngine::updateSkin()
 		m_env->getSkin()->setFont(font);
 	else
 		errorstream << "FontEngine: Default font file: " <<
-				"\n\t\"" << m_settings->get("font_path") << "\"" <<
+				"\n\t\"" << g_settings->get("font_path") << "\"" <<
 				"\n\trequired for current screen configuration was not found" <<
 				" or was invalid file format." <<
 				"\n\tUsing irrlicht default font." << std::endl;
@@ -214,7 +253,7 @@ void FontEngine::updateSkin()
 	FATAL_ERROR_IF(font == NULL, "Could not create/get font");
 
 	u32 text_height = font->getDimension(L"Hello, world!").Height;
-	infostream << "text_height=" << text_height << std::endl;
+	infostream << "FontEngine: measured text_height=" << text_height << std::endl;
 }
 
 /******************************************************************************/
@@ -226,31 +265,24 @@ void FontEngine::updateFontCache()
 }
 
 /******************************************************************************/
-void FontEngine::initFont(unsigned int basesize, FontMode mode)
+gui::IGUIFont *FontEngine::initFont(const FontSpec &spec)
 {
-	assert(mode != FM_Unspecified);
-	assert(basesize != FONT_SIZE_UNSPECIFIED);
-
-	if (m_font_cache[mode].find(basesize) != m_font_cache[mode].end())
-		return;
-
+	assert(spec.mode != FM_Unspecified);
+	assert(spec.size != FONT_SIZE_UNSPECIFIED);
 
 	std::string setting_prefix = "";
+	if (spec.mode == FM_Mono)
+		setting_prefix = "mono_";
 
-	switch (mode) {
-		case FM_Fallback:
-			setting_prefix = "fallback_";
-			break;
-		case FM_Mono:
-		case FM_SimpleMono:
-			setting_prefix = "mono_";
-			break;
-		default:
-			break;
-	}
+	std::string setting_suffix = "";
+	if (spec.bold)
+		setting_suffix.append("_bold");
+	if (spec.italic)
+		setting_suffix.append("_italic");
 
 	u32 size = std::floor(RenderingEngine::getDisplayDensity() *
-			m_settings->getFloat("gui_scaling") * basesize);
+			g_settings->getFloat("gui_scaling") * spec.size);
+
 	if (size == 0) {
 		errorstream << "FontEngine: attempt to use font size 0" << std::endl;
 		errorstream << "  display density: " << RenderingEngine::getDisplayDensity() << std::endl;
@@ -260,48 +292,54 @@ void FontEngine::initFont(unsigned int basesize, FontMode mode)
 	u16 font_shadow       = 0;
 	u16 font_shadow_alpha = 0;
 	g_settings->getU16NoEx(setting_prefix + "font_shadow", font_shadow);
-	g_settings->getU16NoEx(setting_prefix + "font_shadow_alpha", font_shadow_alpha);
+	g_settings->getU16NoEx(setting_prefix + "font_shadow_alpha",
+			font_shadow_alpha);
+
+	std::string path_setting;
+	if (spec.mode == _FM_Fallback)
+		path_setting = "fallback_font_path";
+	else
+		path_setting = setting_prefix + "font_path" + setting_suffix;
 
 	std::string fallback_settings[] = {
-		m_settings->get(setting_prefix + "font_path"),
-		m_settings->get("fallback_font_path"),
-		m_settings->getDefault(setting_prefix + "font_path")
+		g_settings->get(path_setting),
+		Settings::getLayer(SL_DEFAULTS)->get(path_setting)
 	};
 
 #if USE_FREETYPE
 	for (const std::string &font_path : fallback_settings) {
-		irr::gui::IGUIFont *font = gui::CGUITTFont::createTTFont(m_env,
+		gui::CGUITTFont *font = gui::CGUITTFont::createTTFont(m_env,
 				font_path.c_str(), size, true, true, font_shadow,
 				font_shadow_alpha);
 
-		if (font) {
-			m_font_cache[mode][basesize] = font;
-			return;
+		if (!font) {
+			errorstream << "FontEngine: Cannot load '" << font_path <<
+				"'. Trying to fall back to another path." << std::endl;
+			continue;
 		}
 
-		errorstream << "FontEngine: Cannot load '" << font_path <<
-				"'. Trying to fall back to another path." << std::endl;
+		if (spec.mode != _FM_Fallback) {
+			FontSpec spec2(spec);
+			spec2.mode = _FM_Fallback;
+			font->setFallback(getFont(spec2, true));
+		}
+		return font;
 	}
-
-
-	// give up
-	errorstream << "minetest can not continue without a valid font. "
-			"Please correct the 'font_path' setting or install the font "
-			"file in the proper location" << std::endl;
 #else
-	errorstream << "FontEngine: Tried to load freetype fonts but Minetest was"
-			" not compiled with that library." << std::endl;
+	errorstream << "FontEngine: Tried to load TTF font but Minetest was"
+			" compiled without Freetype." << std::endl;
 #endif
-	abort();
+	return nullptr;
 }
 
 /** initialize a font without freetype */
-void FontEngine::initSimpleFont(unsigned int basesize, FontMode mode)
+gui::IGUIFont *FontEngine::initSimpleFont(const FontSpec &spec)
 {
-	assert(mode == FM_Simple || mode == FM_SimpleMono);
+	assert(spec.mode == FM_Simple || spec.mode == FM_SimpleMono);
+	assert(spec.size != FONT_SIZE_UNSPECIFIED);
 
-	const std::string &font_path = m_settings->get(
-			(mode == FM_SimpleMono) ? "mono_font_path" : "font_path");
+	const std::string &font_path = g_settings->get(
+			(spec.mode == FM_SimpleMono) ? "mono_font_path" : "font_path");
 
 	size_t pos_dot = font_path.find_last_of('.');
 	std::string basename = font_path;
@@ -310,19 +348,16 @@ void FontEngine::initSimpleFont(unsigned int basesize, FontMode mode)
 	if (ending == ".ttf") {
 		errorstream << "FontEngine: Found font \"" << font_path
 				<< "\" but freetype is not available." << std::endl;
-		return;
+		return nullptr;
 	}
 
 	if (ending == ".xml" || ending == ".png")
 		basename = font_path.substr(0, pos_dot);
 
-	if (basesize == FONT_SIZE_UNSPECIFIED)
-		basesize = DEFAULT_FONT_SIZE;
-
 	u32 size = std::floor(
 			RenderingEngine::getDisplayDensity() *
-			m_settings->getFloat("gui_scaling") *
-			basesize);
+			g_settings->getFloat("gui_scaling") *
+			spec.size);
 
 	irr::gui::IGUIFont *font = nullptr;
 	std::string font_extensions[] = { ".png", ".xml" };
@@ -340,7 +375,7 @@ void FontEngine::initSimpleFont(unsigned int basesize, FontMode mode)
 			path.str(""); // Clear
 			path << basename << "_" << (size + offset * sign) << ext;
 
-			if (!fs::PathExists(path.str())) 
+			if (!fs::PathExists(path.str()))
 				continue;
 
 			font = m_env->getFont(path.str().c_str());
@@ -364,6 +399,5 @@ void FontEngine::initSimpleFont(unsigned int basesize, FontMode mode)
 		}
 	}
 
-	if (font)
-		m_font_cache[mode][basesize] = font;
+	return font;
 }

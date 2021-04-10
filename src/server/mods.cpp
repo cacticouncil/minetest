@@ -22,6 +22,8 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "log.h"
 #include "scripting_server.h"
 #include "content/subgames.h"
+#include "porting.h"
+#include "util/metricsbackend.h"
 
 /**
  * Manage server mods
@@ -71,9 +73,7 @@ void ServerModManager::loadMods(ServerScripting *script)
 		auto t = std::chrono::steady_clock::now();
 		mod.wasm ? script->loadModWasm(mod.path, mod.name) : script->loadMod(script_path, mod.name);
 		infostream << "Mod \"" << mod.name << "\" loaded after "
-			<< std::chrono::duration_cast<std::chrono::milliseconds>(
-				std::chrono::steady_clock::now() - t).count() * 0.001f
-			<< " seconds" << std::endl;
+			<< (porting::getTimeMs() - t) << " ms" << std::endl;
 	}
 
 	// Run a callback when mods are loaded
@@ -100,11 +100,12 @@ void ServerModManager::getModNames(std::vector<std::string> &modlist) const
 
 void ServerModManager::getModsMediaPaths(std::vector<std::string> &paths) const
 {
-	for (const ModSpec &spec : m_sorted_mods) {
-		paths.push_back(spec.path + DIR_DELIM + "textures");
-		paths.push_back(spec.path + DIR_DELIM + "sounds");
-		paths.push_back(spec.path + DIR_DELIM + "media");
-		paths.push_back(spec.path + DIR_DELIM + "models");
-		paths.push_back(spec.path + DIR_DELIM + "locale");
+	for (auto it = m_sorted_mods.crbegin(); it != m_sorted_mods.crend(); it++) {
+		const ModSpec &spec = *it;
+		fs::GetRecursiveDirs(paths, spec.path + DIR_DELIM + "textures");
+		fs::GetRecursiveDirs(paths, spec.path + DIR_DELIM + "sounds");
+		fs::GetRecursiveDirs(paths, spec.path + DIR_DELIM + "media");
+		fs::GetRecursiveDirs(paths, spec.path + DIR_DELIM + "models");
+		fs::GetRecursiveDirs(paths, spec.path + DIR_DELIM + "locale");
 	}
 }

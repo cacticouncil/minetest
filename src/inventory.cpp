@@ -56,28 +56,31 @@ ItemStack::ItemStack(const std::string &name_, u16 count_,
 		count = 1;
 }
 
-void ItemStack::serialize(std::ostream &os) const
+void ItemStack::serialize(std::ostream &os, bool serialize_meta) const
 {
 	if (empty())
 		return;
 
 	// Check how many parts of the itemstring are needed
 	int parts = 1;
-	if(count != 1)
-		parts = 2;
-	if(wear != 0)
-		parts = 3;
 	if (!metadata.empty())
 		parts = 4;
+	else if (wear != 0)
+		parts = 3;
+	else if (count != 1)
+		parts = 2;
 
-	os<<serializeJsonStringIfNeeded(name);
-	if(parts >= 2)
-		os<<" "<<count;
-	if(parts >= 3)
-		os<<" "<<wear;
+	os << serializeJsonStringIfNeeded(name);
+	if (parts >= 2)
+		os << " " << count;
+	if (parts >= 3)
+		os << " " << wear;
 	if (parts >= 4) {
 		os << " ";
-		metadata.serialize(os);
+		if (serialize_meta)
+			metadata.serialize(os);
+		else
+			os << "<metadata size=" << metadata.size() << ">";
 	}
 }
 
@@ -240,10 +243,10 @@ void ItemStack::deSerialize(const std::string &str, IItemDefManager *itemdef)
 	deSerialize(is, itemdef);
 }
 
-std::string ItemStack::getItemString() const
+std::string ItemStack::getItemString(bool include_meta) const
 {
 	std::ostringstream os(std::ios::binary);
-	serialize(os);
+	serialize(os, include_meta);
 	return os.str();
 }
 
@@ -253,6 +256,20 @@ std::string ItemStack::getDescription(IItemDefManager *itemdef) const
 	if (desc.empty())
 		desc = getDefinition(itemdef).description;
 	return desc.empty() ? name : desc;
+}
+
+std::string ItemStack::getShortDescription(IItemDefManager *itemdef) const
+{
+	std::string desc = metadata.getString("short_description");
+	if (desc.empty())
+		desc = getDefinition(itemdef).short_description;
+	if (!desc.empty())
+		return desc;
+	// no short_description because of old server version or modified builtin
+	// return first line of description
+	std::stringstream sstr(getDescription(itemdef));
+	std::getline(sstr, desc, '\n');
+	return desc;
 }
 
 
@@ -729,17 +746,17 @@ void InventoryList::moveItemSomewhere(u32 i, InventoryList *dest, u32 count)
 u32 InventoryList::moveItem(u32 i, InventoryList *dest, u32 dest_i,
 		u32 count, bool swap_if_needed, bool *did_swap)
 {
-	if(this == dest && i == dest_i)
+	if (this == dest && i == dest_i)
 		return count;
 
 	// Take item from source list
 	ItemStack item1;
-	if(count == 0)
+	if (count == 0)
 		item1 = changeItem(i, ItemStack());
 	else
 		item1 = takeItem(i, count);
 
-	if(item1.empty())
+	if (item1.empty())
 		return 0;
 
 	// Try to add the item to destination list
@@ -747,8 +764,7 @@ u32 InventoryList::moveItem(u32 i, InventoryList *dest, u32 dest_i,
 	item1 = dest->addItem(dest_i, item1);
 
 	// If something is returned, the item was not fully added
-	if(!item1.empty())
-	{
+	if (!item1.empty()) {
 		// If olditem is returned, nothing was added.
 		bool nothing_added = (item1.count == oldcount);
 
@@ -949,13 +965,14 @@ InventoryList * Inventory::getList(const std::string &name)
 {
 	s32 i = getListIndex(name);
 	if(i == -1)
-		return NULL;
+		return nullptr;
 	return m_lists[i];
 }
 
 std::vector<const InventoryList*> Inventory::getLists()
 {
 	std::vector<const InventoryList*> lists;
+	lists.reserve(m_lists.size());
 	for (auto list : m_lists) {
 		lists.push_back(list);
 	}
@@ -974,11 +991,11 @@ bool Inventory::deleteList(const std::string &name)
 	return true;
 }
 
-const InventoryList * Inventory::getList(const std::string &name) const
+const InventoryList *Inventory::getList(const std::string &name) const
 {
 	s32 i = getListIndex(name);
 	if(i == -1)
-		return NULL;
+		return nullptr;
 	return m_lists[i];
 }
 

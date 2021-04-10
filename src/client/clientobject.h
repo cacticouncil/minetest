@@ -41,16 +41,17 @@ public:
 
 	virtual void addToScene(ITextureSource *tsrc) {}
 	virtual void removeFromScene(bool permanent) {}
-	// 0 <= light_at_pos <= LIGHT_SUN
-	virtual void updateLight(u8 light_at_pos) {}
-	virtual void updateLightNoCheck(u8 light_at_pos) {}
-	virtual v3s16 getLightPosition() { return v3s16(0, 0, 0); }
+
+	virtual void updateLight(u32 day_night_ratio) {}
+
 	virtual bool getCollisionBox(aabb3f *toset) const { return false; }
 	virtual bool getSelectionBox(aabb3f *toset) const { return false; }
 	virtual bool collideWithObjects() const { return false; }
 	virtual const v3f getPosition() const { return v3f(0.0f); }
-	virtual scene::ISceneNode *getSceneNode() { return NULL; }
-	virtual scene::IAnimatedMeshSceneNode *getAnimatedMeshSceneNode() { return NULL; }
+	virtual scene::ISceneNode *getSceneNode() const
+	{ return NULL; }
+	virtual scene::IAnimatedMeshSceneNode *getAnimatedMeshSceneNode() const
+	{ return NULL; }
 	virtual bool isLocalPlayer() const { return false; }
 
 	virtual ClientActiveObject *getParent() const { return nullptr; };

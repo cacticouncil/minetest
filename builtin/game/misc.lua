@@ -1,5 +1,7 @@
 -- Minetest: builtin/misc.lua
 
+local S = core.get_translator("__builtin")
+
 --
 -- Misc. API functions
 --
@@ -40,20 +42,17 @@ function core.check_player_privs(name, ...)
 end
 
 
-local player_list = {}
-
-
 function core.send_join_message(player_name)
 	if not core.is_singleplayer() then
-		core.chat_send_all("*** " .. player_name .. " joined the game.")
+		core.chat_send_all("*** " .. S("@1 joined the game.", player_name))
 	end
 end
 
 
 function core.send_leave_message(player_name, timed_out)
-	local announcement = "*** " ..  player_name .. " left the game."
+	local announcement = "*** " .. S("@1 left the game.", player_name)
 	if timed_out then
-		announcement = announcement .. " (timed out)"
+		announcement = "*** " .. S("@1 left the game (timed out).", player_name)
 	end
 	core.chat_send_all(announcement)
 end
@@ -61,7 +60,6 @@ end
 
 core.register_on_joinplayer(function(player)
 	local player_name = player:get_player_name()
-	player_list[player_name] = player
 	if not core.is_singleplayer() then
 		local status = core.get_server_status(player_name, true)
 		if status and status ~= "" then
@@ -74,20 +72,8 @@ end)
 
 core.register_on_leaveplayer(function(player, timed_out)
 	local player_name = player:get_player_name()
-	player_list[player_name] = nil
 	core.send_leave_message(player_name, timed_out)
 end)
-
-
-function core.get_connected_players()
-	local temp_table = {}
-	for index, value in pairs(player_list) do
-		if value:is_player_connected() then
-			temp_table[#temp_table + 1] = value
-		end
-	end
-	return temp_table
-end
 
 
 function core.is_player(player)
@@ -167,6 +153,12 @@ function core.setting_get_pos(name)
 end
 
 
+-- See l_env.cpp for the other functions
+function core.get_artificial_light(param1)
+	return math.floor(param1 / 16)
+end
+
+
 -- To be overriden by protection mods
 
 function core.is_protected(pos, name)
@@ -180,6 +172,12 @@ function core.record_protection_violation(pos, name)
 	end
 end
 
+-- To be overridden by Creative mods
+
+local creative_mode_cache = core.settings:get_bool("creative_mode")
+function core.is_creative_enabled(name)
+	return creative_mode_cache
+end
 
 -- Checks if specified volume intersects a protected volume
 
@@ -269,4 +267,27 @@ end
 
 function core.cancel_shutdown_requests()
 	core.request_shutdown("", false, -1)
+end
+
+
+-- Callback handling for dynamic_add_media
+
+local dynamic_add_media_raw = core.dynamic_add_media_raw
+core.dynamic_add_media_raw = nil
+function core.dynamic_add_media(filepath, callback)
+	local ret = dynamic_add_media_raw(filepath)
+	if ret == false then
+		return ret
+	end
+	if callback == nil then
+		core.log("deprecated", "Calling minetest.dynamic_add_media without "..
+			"a callback is deprecated and will stop working in future versions.")
+	else
+		-- At the moment async loading is not actually implemented, so we
+		-- immediately call the callback ourselves
+		for _, name in ipairs(ret) do
+			callback(name)
+		end
+	end
+	return true
 end

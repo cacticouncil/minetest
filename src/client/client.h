@@ -82,34 +82,24 @@ public:
 
 	void add(u16 command)
 	{
-		std::map<u16, u16>::iterator n = m_packets.find(command);
-		if(n == m_packets.end())
-		{
+		auto n = m_packets.find(command);
+		if (n == m_packets.end())
 			m_packets[command] = 1;
-		}
 		else
-		{
 			n->second++;
-		}
 	}
 
 	void clear()
 	{
-		for (auto &m_packet : m_packets) {
-			m_packet.second = 0;
-		}
+		m_packets.clear();
 	}
 
-	void print(std::ostream &o)
-	{
-		for (const auto &m_packet : m_packets) {
-			o << "cmd "<< m_packet.first <<" count "<< m_packet.second << std::endl;
-		}
-	}
+	u32 sum() const;
+	void print(std::ostream &o) const;
 
 private:
 	// command, count
-	std::map<u16, u16> m_packets;
+	std::map<u16, u32> m_packets;
 };
 
 class ClientScripting;
@@ -218,6 +208,9 @@ public:
 	void handleCommand_HudSetFlags(NetworkPacket* pkt);
 	void handleCommand_HudSetParam(NetworkPacket* pkt);
 	void handleCommand_HudSetSky(NetworkPacket* pkt);
+	void handleCommand_HudSetSun(NetworkPacket* pkt);
+	void handleCommand_HudSetMoon(NetworkPacket* pkt);
+	void handleCommand_HudSetStars(NetworkPacket* pkt);
 	void handleCommand_CloudParams(NetworkPacket* pkt);
 	void handleCommand_OverrideDayNightRatio(NetworkPacket* pkt);
 	void handleCommand_LocalPlayerAnimations(NetworkPacket* pkt);
@@ -229,6 +222,8 @@ public:
 	void handleCommand_FormspecPrepend(NetworkPacket *pkt);
 	void handleCommand_CSMRestrictionFlags(NetworkPacket *pkt);
 	void handleCommand_PlayerSpeed(NetworkPacket *pkt);
+	void handleCommand_MediaPush(NetworkPacket *pkt);
+	void handleCommand_MinimapModes(NetworkPacket *pkt);
 
 	void ProcessData(NetworkPacket *pkt);
 
@@ -261,14 +256,11 @@ public:
 	// Causes urgent mesh updates (unlike Map::add/removeNodeWithEvent)
 	void removeNode(v3s16 p);
 
-	/**
-	 * Helper function for Client Side Modding
-	 * CSM restrictions are applied there, this should not be used for core engine
-	 * @param p
-	 * @param is_valid_position
-	 * @return
-	 */
-	MapNode getNode(v3s16 p, bool *is_valid_position);
+	// helpers to enforce CSM restrictions
+	MapNode CSMGetNode(v3s16 p, bool *is_valid_position);
+	int CSMClampRadius(v3s16 pos, int radius);
+	v3s16 CSMClampPos(v3s16 pos);
+
 	void addNode(v3s16 p, MapNode n, bool remove_metadata = true);
 
 	void setPlayerControl(PlayerControl &control);
@@ -346,7 +338,6 @@ public:
 	u16 getProtoVersion()
 	{ return m_proto_ver; }
 
-	bool connectedToServer();
 	void confirmRegistration();
 	bool m_is_registration_confirmation_state = false;
 	bool m_simple_singleplayer_mode;
@@ -370,7 +361,7 @@ public:
 	const NodeDefManager* getNodeDefManager() override;
 	ICraftDefManager* getCraftDefManager() override;
 	ITextureSource* getTextureSource();
-	virtual IShaderSource* getShaderSource();
+	virtual IWritableShaderSource* getShaderSource();
 	u16 allocateUnknownNodeId(const std::string &name) override;
 	virtual ISoundManager* getSoundManager();
 	MtEventManager* getEventManager();
@@ -378,7 +369,7 @@ public:
 	bool checkLocalPrivilege(const std::string &priv)
 	{ return checkPrivilege(priv); }
 	virtual scene::IAnimatedMesh* getMesh(const std::string &filename, bool cache = false);
-	const std::string* getModFile(const std::string &filename);
+	const std::string* getModFile(std::string filename);
 
 	std::string getModStoragePath() const override;
 	bool registerModStorage(ModMetadata *meta) override;
@@ -386,7 +377,8 @@ public:
 
 	// The following set of functions is used by ClientMediaDownloader
 	// Insert a media file appropriately into the appropriate manager
-	bool loadMedia(const std::string &data, const std::string &filename);
+	bool loadMedia(const std::string &data, const std::string &filename,
+		bool from_media_push = false);
 	// Send a request for conventional media transfer
 	void request_media(const std::vector<std::string> &file_requests);
 
@@ -413,19 +405,14 @@ public:
 		return m_address_name;
 	}
 
+	inline u64 getCSMRestrictionFlags() const
+	{
+		return m_csm_restriction_flags;
+	}
+
 	inline bool checkCSMRestrictionFlag(CSMRestrictionFlags flag) const
 	{
 		return m_csm_restriction_flags & flag;
-	}
-
-	u32 getCSMNodeRangeLimit() const
-	{
-		return m_csm_restriction_noderange;
-	}
-
-	inline std::unordered_map<u32, u32> &getHUDTranslationMap()
-	{
-		return m_hud_server_to_client;
 	}
 
 	bool joinModChannel(const std::string &channel) override;
@@ -440,7 +427,6 @@ public:
 	}
 private:
 	void loadMods();
-	bool checkBuiltinIntegrity();
 
 	// Virtual methods from con::PeerHandler
 	void peerAdded(con::Peer *peer) override;
@@ -451,7 +437,6 @@ private:
 			bool is_local_server);
 
 	void ReceiveAll();
-	void Receive();
 
 	void sendPlayerPos();
 
@@ -494,6 +479,7 @@ private:
 	Camera *m_camera = nullptr;
 	Minimap *m_minimap = nullptr;
 	bool m_minimap_disabled_by_server = false;
+
 	// Server serialization version
 	u8 m_server_ser_ver;
 
@@ -535,7 +521,6 @@ private:
 	AuthMechanism m_chosen_auth_mech;
 	void *m_auth_data = nullptr;
 
-
 	bool m_access_denied = false;
 	bool m_access_denied_reconnect = false;
 	std::string m_access_denied_reason = "";
@@ -544,7 +529,10 @@ private:
 	bool m_nodedef_received = false;
 	bool m_activeobjects_received = false;
 	bool m_mods_loaded = false;
+
 	ClientMediaDownloader *m_media_downloader;
+	// Set of media filenames pushed by server at runtime
+	std::unordered_set<std::string> m_media_pushed_files;
 
 	// time_of_day speed approximation for old protocol
 	bool m_time_of_day_set = false;
@@ -560,11 +548,8 @@ private:
 	std::unordered_map<s32, int> m_sounds_server_to_client;
 	// And the other way!
 	std::unordered_map<int, s32> m_sounds_client_to_server;
-	// And relations to objects
+	// Relation of client id to object id
 	std::unordered_map<int, u16> m_sounds_to_objects;
-
-	// Map server hud ids to client hud ids
-	std::unordered_map<u32, u32> m_hud_server_to_client;
 
 	// Privileges
 	std::unordered_set<std::string> m_privileges;
@@ -576,8 +561,6 @@ private:
 	// Storage for mesh data for creating multiple instances of the same mesh
 	StringMap m_mesh_data;
 
-	StringMap m_mod_files;
-
 	// own state
 	LocalClientState m_state;
 
@@ -588,11 +571,12 @@ private:
 	IntervalLimiter m_localdb_save_interval;
 	u16 m_cache_save_interval;
 
+	// Client modding
 	ClientScripting *m_script = nullptr;
-	bool m_modding_enabled;
 	std::unordered_map<std::string, ModMetadata *> m_mod_storages;
 	float m_mod_storage_save_timer = 10.0f;
 	std::vector<ModSpec> m_mods;
+	StringMap m_mod_vfs;
 
 	bool m_shutdown = false;
 

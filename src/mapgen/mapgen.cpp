@@ -28,7 +28,6 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "mapblock.h"
 #include "mapnode.h"
 #include "map.h"
-#include "content_sao.h"
 #include "nodedef.h"
 #include "emerge.h"
 #include "voxelalgorithms.h"
@@ -59,6 +58,7 @@ FlagDesc flagdesc_mapgen[] = {
 	{"light",       MG_LIGHT},
 	{"decorations", MG_DECORATIONS},
 	{"biomes",      MG_BIOMES},
+	{"ores",        MG_ORES},
 	{NULL,          0}
 };
 
@@ -107,8 +107,8 @@ STATIC_ASSERT(
 //// Mapgen
 ////
 
-Mapgen::Mapgen(int mapgenid, MapgenParams *params, EmergeManager *emerge) :
-	gennotify(emerge->gen_notify_on, &emerge->gen_notify_on_deco_ids)
+Mapgen::Mapgen(int mapgenid, MapgenParams *params, EmergeParams *emerge) :
+	gennotify(emerge->gen_notify_on, emerge->gen_notify_on_deco_ids)
 {
 	id           = mapgenid;
 	water_level  = params->water_level;
@@ -157,7 +157,7 @@ const char *Mapgen::getMapgenName(MapgenType mgtype)
 
 
 Mapgen *Mapgen::createMapgen(MapgenType mgtype, MapgenParams *params,
-	EmergeManager *emerge)
+	EmergeParams *emerge)
 {
 	switch (mgtype) {
 	case MAPGEN_CARPATHIAN:
@@ -215,6 +215,17 @@ void Mapgen::getMapgenNames(std::vector<const char *> *mgnames, bool include_hid
 	}
 }
 
+void Mapgen::setDefaultSettings(Settings *settings)
+{
+	settings->setDefault("mg_flags", flagdesc_mapgen,
+		 MG_CAVES | MG_DUNGEONS | MG_LIGHT | MG_DECORATIONS | MG_BIOMES | MG_ORES);
+
+	for (int i = 0; i < (int)MAPGEN_INVALID; ++i) {
+		MapgenParams *params = createMapgenParams((MapgenType)i);
+		params->setDefaultSettings(settings);
+		delete params;
+	}
+}
 
 u32 Mapgen::getBlockSeed(v3s16 p, s32 seed)
 {
@@ -230,26 +241,6 @@ u32 Mapgen::getBlockSeed2(v3s16 p, s32 seed)
 	u32 n = 1619 * p.X + 31337 * p.Y + 52591 * p.Z + 1013 * seed;
 	n = (n >> 13) ^ n;
 	return (n * (n * n * 60493 + 19990303) + 1376312589);
-}
-
-
-// Returns Y one under area minimum if not found
-s16 Mapgen::findGroundLevelFull(v2s16 p2d)
-{
-	const v3s16 &em = vm->m_area.getExtent();
-	s16 y_nodes_max = vm->m_area.MaxEdge.Y;
-	s16 y_nodes_min = vm->m_area.MinEdge.Y;
-	u32 i = vm->m_area.index(p2d.X, y_nodes_max, p2d.Y);
-	s16 y;
-
-	for (y = y_nodes_max; y >= y_nodes_min; y--) {
-		MapNode &n = vm->m_data[i];
-		if (ndef->get(n).walkable)
-			break;
-
-		VoxelArea::add_y(em, i, -1);
-	}
-	return (y >= y_nodes_min) ? y : y_nodes_min - 1;
 }
 
 
@@ -575,7 +566,7 @@ void Mapgen::spreadLight(const v3s16 &nmin, const v3s16 &nmax)
 //// MapgenBasic
 ////
 
-MapgenBasic::MapgenBasic(int mapgenid, MapgenParams *params, EmergeManager *emerge)
+MapgenBasic::MapgenBasic(int mapgenid, MapgenParams *params, EmergeParams *emerge)
 	: Mapgen(mapgenid, params, emerge)
 {
 	this->m_emerge = emerge;
@@ -604,7 +595,8 @@ MapgenBasic::MapgenBasic(int mapgenid, MapgenParams *params, EmergeManager *emer
 	this->heightmap = new s16[csize.X * csize.Z];
 
 	//// Initialize biome generator
-	biomegen = m_bmgr->createBiomeGen(BIOMEGEN_ORIGINAL, params->bparams, csize);
+	biomegen = emerge->biomegen;
+	biomegen->assertChunkSize(csize);
 	biomemap = biomegen->biomemap;
 
 	//// Look up some commonly used content
@@ -618,13 +610,21 @@ MapgenBasic::MapgenBasic(int mapgenid, MapgenParams *params, EmergeManager *emer
 	// Lava falls back to water as both are suitable as cave liquids.
 	if (c_lava_source == CONTENT_IGNORE)
 		c_lava_source = c_water_source;
+
+	if (c_stone == CONTENT_IGNORE)
+		errorstream << "Mapgen: Mapgen alias 'mapgen_stone' is invalid!" << std::endl;
+	if (c_water_source == CONTENT_IGNORE)
+		errorstream << "Mapgen: Mapgen alias 'mapgen_water_source' is invalid!" << std::endl;
+	if (c_river_water_source == CONTENT_IGNORE)
+		warningstream << "Mapgen: Mapgen alias 'mapgen_river_water_source' is invalid!" << std::endl;
 }
 
 
 MapgenBasic::~MapgenBasic()
 {
-	delete biomegen;
 	delete []heightmap;
+
+	delete m_emerge; // destroying EmergeParams is our responsibility
 }
 
 
@@ -831,7 +831,9 @@ void MapgenBasic::dustTopNodes()
 
 void MapgenBasic::generateCavesNoiseIntersection(s16 max_stone_y)
 {
-	if (node_min.Y > max_stone_y)
+	// cave_width >= 10 is used to disable generation and avoid the intensive
+	// 3D noise calculations. Tunnels already have zero width when cave_width > 1.
+	if (node_min.Y > max_stone_y || cave_width >= 10.0f)
 		return;
 
 	CavesNoiseIntersection caves_noise(ndef, m_bmgr, csize,
@@ -841,20 +843,33 @@ void MapgenBasic::generateCavesNoiseIntersection(s16 max_stone_y)
 }
 
 
-void MapgenBasic::generateCavesRandomWalk(s16 max_stone_y, s16 large_cave_depth)
+void MapgenBasic::generateCavesRandomWalk(s16 max_stone_y, s16 large_cave_ymax)
 {
-	if (node_min.Y > max_stone_y || node_max.Y > large_cave_depth)
+	if (node_min.Y > max_stone_y)
 		return;
 
 	PseudoRandom ps(blockseed + 21343);
-	u32 bruises_count = ps.range(0, 2);
+	// Small randomwalk caves
+	u32 num_small_caves = ps.range(small_cave_num_min, small_cave_num_max);
 
-	for (u32 i = 0; i < bruises_count; i++) {
+	for (u32 i = 0; i < num_small_caves; i++) {
 		CavesRandomWalk cave(ndef, &gennotify, seed, water_level,
-			c_water_source, c_lava_source, lava_depth, biomegen);
+			c_water_source, c_lava_source, large_cave_flooded, biomegen);
+		cave.makeCave(vm, node_min, node_max, &ps, false, max_stone_y, heightmap);
+	}
 
-		cave.makeCave(vm, node_min, node_max, &ps, true, max_stone_y,
-			heightmap);
+	if (node_max.Y > large_cave_ymax)
+		return;
+
+	// Large randomwalk caves below 'large_cave_ymax'.
+	// 'large_cave_ymax' can differ from the 'large_cave_depth' mapgen parameter,
+	// it is set to world base to disable large caves in or near caverns.
+	u32 num_large_caves = ps.range(large_cave_num_min, large_cave_num_max);
+
+	for (u32 i = 0; i < num_large_caves; i++) {
+		CavesRandomWalk cave(ndef, &gennotify, seed, water_level,
+			c_water_source, c_lava_source, large_cave_flooded, biomegen);
+		cave.makeCave(vm, node_min, node_max, &ps, true, max_stone_y, heightmap);
 	}
 }
 
@@ -873,7 +888,8 @@ bool MapgenBasic::generateCavernsNoise(s16 max_stone_y)
 
 void MapgenBasic::generateDungeons(s16 max_stone_y)
 {
-	if (max_stone_y < node_min.Y)
+	if (node_min.Y > max_stone_y || node_min.Y > dungeon_ymax ||
+			node_max.Y < dungeon_ymin)
 		return;
 
 	u16 num_dungeons = std::fmax(std::floor(
@@ -941,21 +957,9 @@ void MapgenBasic::generateDungeons(s16 max_stone_y)
 ////
 
 GenerateNotifier::GenerateNotifier(u32 notify_on,
-	std::set<u32> *notify_on_deco_ids)
+	const std::set<u32> *notify_on_deco_ids)
 {
 	m_notify_on = notify_on;
-	m_notify_on_deco_ids = notify_on_deco_ids;
-}
-
-
-void GenerateNotifier::setNotifyOn(u32 notify_on)
-{
-	m_notify_on = notify_on;
-}
-
-
-void GenerateNotifier::setNotifyOnDecoIds(std::set<u32> *notify_on_deco_ids)
-{
 	m_notify_on_deco_ids = notify_on_deco_ids;
 }
 
@@ -966,7 +970,7 @@ bool GenerateNotifier::addEvent(GenNotifyType type, v3s16 pos, u32 id)
 		return false;
 
 	if (type == GENNOTIFY_DECORATION &&
-		m_notify_on_deco_ids->find(id) == m_notify_on_deco_ids->end())
+		m_notify_on_deco_ids->find(id) == m_notify_on_deco_ids->cend())
 		return false;
 
 	GenNotifyEvent gne;
@@ -1052,7 +1056,7 @@ void MapgenParams::writeParams(Settings *settings) const
 	settings->setS16("water_level", water_level);
 	settings->setS16("mapgen_limit", mapgen_limit);
 	settings->setS16("chunksize", chunksize);
-	settings->setFlagStr("mg_flags", flags, flagdesc_mapgen, U32_MAX);
+	settings->setFlagStr("mg_flags", flags, flagdesc_mapgen);
 
 	if (bparams)
 		bparams->writeParams(settings);

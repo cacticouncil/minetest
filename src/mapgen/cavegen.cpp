@@ -1,8 +1,8 @@
 /*
 Minetest
-Copyright (C) 2010-2018 celeron55, Perttu Ahola <celeron55@gmail.com>
-Copyright (C) 2010-2018 kwolekr, Ryan Kwolek <kwolekr@minetest.net>
-Copyright (C) 2015-2018 paramat
+Copyright (C) 2010-2020 celeron55, Perttu Ahola <celeron55@gmail.com>
+Copyright (C) 2015-2020 paramat
+Copyright (C) 2010-2016 kwolekr, Ryan Kwolek <kwolekr@minetest.net>
 
 This program is free software; you can redistribute it and/or modify
 it under the terms of the GNU Lesser General Public License as published by
@@ -69,7 +69,7 @@ CavesNoiseIntersection::~CavesNoiseIntersection()
 
 
 void CavesNoiseIntersection::generateCaves(MMVManip *vm,
-	v3s16 nmin, v3s16 nmax, u8 *biomemap)
+	v3s16 nmin, v3s16 nmax, biome_t *biomemap)
 {
 	assert(vm);
 	assert(biomemap);
@@ -280,18 +280,18 @@ CavesRandomWalk::CavesRandomWalk(
 	int water_level,
 	content_t water_source,
 	content_t lava_source,
-	int lava_depth,
+	float large_cave_flooded,
 	BiomeGen *biomegen)
 {
 	assert(ndef);
 
-	this->ndef           = ndef;
-	this->gennotify      = gennotify;
-	this->seed           = seed;
-	this->water_level    = water_level;
-	this->np_caveliquids = &nparams_caveliquids;
-	this->lava_depth     = lava_depth;
-	this->bmgn           = biomegen;
+	this->ndef               = ndef;
+	this->gennotify          = gennotify;
+	this->seed               = seed;
+	this->water_level        = water_level;
+	this->np_caveliquids     = &nparams_caveliquids;
+	this->large_cave_flooded = large_cave_flooded;
+	this->bmgn               = biomegen;
 
 	c_water_source = water_source;
 	if (c_water_source == CONTENT_IGNORE)
@@ -322,7 +322,7 @@ void CavesRandomWalk::makeCave(MMVManip *vm, v3s16 nmin, v3s16 nmax,
 
 	this->ystride = nmax.X - nmin.X + 1;
 
-	flooded = ps->range(1, 2) == 2;
+	flooded = ps->range(1, 1000) <= large_cave_flooded * 1000.0f;
 
 	// If flooded:
 	// Get biome at mapchunk midpoint. If cave liquid defined for biome, use it.
@@ -364,12 +364,13 @@ void CavesRandomWalk::makeCave(MMVManip *vm, v3s16 nmin, v3s16 nmax,
 	// Area starting point in nodes
 	of = node_min;
 
-	// Allow a bit more
-	//(this should be more than the maximum radius of the tunnel)
-	const s16 insure = 10;
+	// Allow caves to extend up to 16 nodes beyond the mapchunk edge, to allow
+	// connecting with caves of neighbor mapchunks.
+	// 'insure' is needed to avoid many 'out of voxelmanip' cave nodes.
+	const s16 insure = 2;
 	s16 more = MYMAX(MAP_BLOCKSIZE - max_tunnel_diameter / 2 - insure, 1);
-	ar += v3s16(1, 0, 1) * more * 2;
-	of -= v3s16(1, 0, 1) * more;
+	ar += v3s16(1, 1, 1) * more * 2;
+	of -= v3s16(1, 1, 1) * more;
 
 	route_y_min = 0;
 	// Allow half a diameter + 7 over stone surface
@@ -527,12 +528,12 @@ void CavesRandomWalk::carveRoute(v3f vec, float f, bool randomize_xz)
 		if (use_biome_liquid) {
 			liquidnode = c_biome_liquid;
 		} else {
-			// TODO remove this. Cave liquids are now defined and located using biome
-			// definitions.
 			// If cave liquid not defined by biome, fallback to old hardcoded behaviour.
+			// TODO 'np_caveliquids' is deprecated and should eventually be removed.
+			// Cave liquids are now defined and located using biome definitions.
 			float nval = NoisePerlin3D(np_caveliquids, startp.X,
 				startp.Y, startp.Z, seed);
-			liquidnode = (nval < 0.40f && node_max.Y < lava_depth) ?
+			liquidnode = (nval < 0.40f && node_max.Y < water_level - 256) ?
 				lavanode : waternode;
 		}
 	}

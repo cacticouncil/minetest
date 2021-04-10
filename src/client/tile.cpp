@@ -429,7 +429,6 @@ private:
 	// Cached settings needed for making textures from meshes
 	bool m_setting_trilinear_filter;
 	bool m_setting_bilinear_filter;
-	bool m_setting_anisotropic_filter;
 };
 
 IWritableTextureSource *createTextureSource()
@@ -450,7 +449,6 @@ TextureSource::TextureSource()
 	// for these settings to take effect
 	m_setting_trilinear_filter = g_settings->getBool("trilinear_filter");
 	m_setting_bilinear_filter = g_settings->getBool("bilinear_filter");
-	m_setting_anisotropic_filter = g_settings->getBool("anisotropic_filter");
 }
 
 TextureSource::~TextureSource()
@@ -471,8 +469,8 @@ TextureSource::~TextureSource()
 		driver->removeTexture(t);
 	}
 
-	infostream << "~TextureSource() "<< textures_before << "/"
-			<< driver->getTextureCount() << std::endl;
+	infostream << "~TextureSource() before cleanup: "<< textures_before
+			<< " after: " << driver->getTextureCount() << std::endl;
 }
 
 u32 TextureSource::getTextureId(const std::string &name)
@@ -668,7 +666,14 @@ video::ITexture* TextureSource::getTexture(const std::string &name, u32 *id)
 
 video::ITexture* TextureSource::getTextureForMesh(const std::string &name, u32 *id)
 {
-	return getTexture(name + "^[applyfiltersformesh", id);
+	static thread_local bool filter_needed =
+		g_settings->getBool("texture_clean_transparent") ||
+		((m_setting_trilinear_filter || m_setting_bilinear_filter) &&
+		g_settings->getS32("texture_min_size") > 1);
+	// Avoid duplicating texture if it won't actually change
+	if (filter_needed)
+		return getTexture(name + "^[applyfiltersformesh", id);
+	return getTexture(name, id);
 }
 
 Palette* TextureSource::getPalette(const std::string &name)
@@ -763,6 +768,9 @@ void TextureSource::rebuildImagesAndTextures()
 	video::IVideoDriver *driver = RenderingEngine::get_video_driver();
 	sanity_check(driver);
 
+	infostream << "TextureSource: recreating " << m_textureinfo_cache.size()
+		<< " textures" << std::endl;
+
 	// Recreate textures
 	for (TextureInfo &ti : m_textureinfo_cache) {
 		video::IImage *img = generateImage(ti.name);
@@ -829,17 +837,16 @@ static video::IImage *createInventoryCubeImage(
 			image = scaled;
 		}
 		sanity_check(image->getPitch() == 4 * size);
-		return reinterpret_cast<u32 *>(image->lock());
+		return reinterpret_cast<u32 *>(image->getData());
 	};
 	auto free_image = [] (video::IImage *image) -> void {
-		image->unlock();
 		image->drop();
 	};
 
 	video::IImage *result = driver->createImage(video::ECF_A8R8G8B8, {cube_size, cube_size});
 	sanity_check(result->getPitch() == 4 * cube_size);
 	result->fill(video::SColor(0x00000000u));
-	u32 *target = reinterpret_cast<u32 *>(result->lock());
+	u32 *target = reinterpret_cast<u32 *>(result->getData());
 
 	// Draws single cube face
 	// `shade_factor` is face brightness, in range [0.0, 1.0]
@@ -898,7 +905,6 @@ static video::IImage *createInventoryCubeImage(
 				{0, 5}, {1, 5},
 			});
 
-	result->unlock();
 	return result;
 }
 
@@ -1270,8 +1276,6 @@ bool TextureSource::generateImagePart(std::string part_of_name,
 				video::IImage *img = generateImage(filename);
 				if (img) {
 					core::dimension2d<u32> dim = img->getDimension();
-					infostream<<"Size "<<dim.Width
-							<<"x"<<dim.Height<<std::endl;
 					core::position2d<s32> pos_base(x, y);
 					video::IImage *img2 =
 							driver->createImage(video::ECF_A8R8G8B8, dim);
@@ -1622,6 +1626,16 @@ bool TextureSource::generateImagePart(std::string part_of_name,
 		*/
 		else if (str_starts_with(part_of_name, "[applyfiltersformesh"))
 		{
+			/* IMPORTANT: When changing this, getTextureForMesh() needs to be
+			 * updated too. */
+
+			if (!baseimg) {
+				errorstream << "generateImagePart(): baseimg == NULL "
+						<< "for part_of_name=\"" << part_of_name
+						<< "\", cancelling." << std::endl;
+				return false;
+			}
+
 			// Apply the "clean transparent" filter, if configured.
 			if (g_settings->getBool("texture_clean_transparent"))
 				imageCleanTransparent(baseimg, 127);
@@ -1812,6 +1826,24 @@ bool TextureSource::generateImagePart(std::string part_of_name,
 }
 
 /*
+	Calculate the color of a single pixel drawn on top of another pixel.
+
+	This is a little more complicated than just video::SColor::getInterpolated
+	because getInterpolated does not handle alpha correctly.  For example, a
+	pixel with alpha=64 drawn atop a pixel with alpha=128 should yield a
+	pixel with alpha=160, while getInterpolated would yield alpha=96.
+*/
+static inline video::SColor blitPixel(const video::SColor &src_c, const video::SColor &dst_c, u32 ratio)
+{
+	if (dst_c.getAlpha() == 0)
+		return src_c;
+	video::SColor out_c = src_c.getInterpolated(dst_c, (float)ratio / 255.0f);
+	out_c.setAlpha(dst_c.getAlpha() + (255 - dst_c.getAlpha()) *
+		src_c.getAlpha() * ratio / (255 * 255));
+	return out_c;
+}
+
+/*
 	Draw an image on top of an another one, using the alpha channel of the
 	source image
 
@@ -1830,7 +1862,7 @@ static void blit_with_alpha(video::IImage *src, video::IImage *dst,
 		s32 dst_y = dst_pos.Y + y0;
 		video::SColor src_c = src->getPixel(src_x, src_y);
 		video::SColor dst_c = dst->getPixel(dst_x, dst_y);
-		dst_c = src_c.getInterpolated(dst_c, (float)src_c.getAlpha()/255.0f);
+		dst_c = blitPixel(src_c, dst_c, src_c.getAlpha());
 		dst->setPixel(dst_x, dst_y, dst_c);
 	}
 }
@@ -1853,7 +1885,7 @@ static void blit_with_alpha_overlay(video::IImage *src, video::IImage *dst,
 		video::SColor dst_c = dst->getPixel(dst_x, dst_y);
 		if (dst_c.getAlpha() == 255 && src_c.getAlpha() != 0)
 		{
-			dst_c = src_c.getInterpolated(dst_c, (float)src_c.getAlpha()/255.0f);
+			dst_c = blitPixel(src_c, dst_c, src_c.getAlpha());
 			dst->setPixel(dst_x, dst_y, dst_c);
 		}
 	}
@@ -2190,9 +2222,14 @@ video::SColor TextureSource::getTextureAverageColor(const std::string &name)
 	video::IVideoDriver *driver = RenderingEngine::get_video_driver();
 	video::SColor c(0, 0, 0, 0);
 	video::ITexture *texture = getTexture(name);
+	if (!texture)
+		return c;
 	video::IImage *image = driver->createImage(texture,
 		core::position2d<s32>(0, 0),
 		texture->getOriginalSize());
+	if (!image)
+		return c;
+
 	u32 total = 0;
 	u32 tR = 0;
 	u32 tG = 0;

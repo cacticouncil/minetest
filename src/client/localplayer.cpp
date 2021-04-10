@@ -19,7 +19,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 
 #include "localplayer.h"
 #include <cmath>
-#include "event.h"
+#include "mtevent.h"
 #include "collision.h"
 #include "nodedef.h"
 #include "settings.h"
@@ -184,8 +184,8 @@ void LocalPlayer::move(f32 dtime, Environment *env, f32 pos_max_d,
 	v3f position = getPosition();
 
 	// Copy parent position if local player is attached
-	if (isAttached) {
-		setPosition(overridePosition);
+	if (getParent()) {
+		setPosition(m_cao->getPosition());
 		added_velocity = v3f(0.0f); // ignored
 		return;
 	}
@@ -200,6 +200,8 @@ void LocalPlayer::move(f32 dtime, Environment *env, f32 pos_max_d,
 	if (noclip && free_move) {
 		position += m_speed * dtime;
 		setPosition(position);
+
+		touching_ground = false;
 		added_velocity = v3f(0.0f); // ignored
 		return;
 	}
@@ -436,9 +438,11 @@ void LocalPlayer::move(f32 dtime, Environment *env, f32 pos_max_d,
 		Check properties of the node on which the player is standing
 	*/
 	const ContentFeatures &f = nodemgr->get(map->getNode(m_standing_node));
+	const ContentFeatures &f1 = nodemgr->get(map->getNode(m_standing_node + v3s16(0, 1, 0)));
 
 	// Determine if jumping is possible
-	m_disable_jump = itemgroup_get(f.groups, "disable_jump");
+	m_disable_jump = itemgroup_get(f.groups, "disable_jump") ||
+		itemgroup_get(f1.groups, "disable_jump");
 	m_can_jump = ((touching_ground && !is_climbing) || sneak_can_jump) && !m_disable_jump;
 
 	// Jump key pressed while jumping off from a bouncy block
@@ -474,7 +478,7 @@ void LocalPlayer::applyControl(float dtime, Environment *env)
 	setYaw(control.yaw);
 
 	// Nullify speed and don't run positioning code if the player is attached
-	if (isAttached) {
+	if (getParent()) {
 		setSpeed(v3f(0.0f));
 		return;
 	}
@@ -706,6 +710,11 @@ v3f LocalPlayer::getEyeOffset() const
 	return v3f(0.0f, BS * eye_height, 0.0f);
 }
 
+ClientActiveObject *LocalPlayer::getParent() const
+{
+	return m_cao ? m_cao->getParent() : nullptr;
+}
+
 bool LocalPlayer::isDead() const
 {
 	FATAL_ERROR_IF(!getCAO(), "LocalPlayer's CAO isn't initialized");
@@ -764,8 +773,8 @@ void LocalPlayer::old_move(f32 dtime, Environment *env, f32 pos_max_d,
 	v3f position = getPosition();
 
 	// Copy parent position if local player is attached
-	if (isAttached) {
-		setPosition(overridePosition);
+	if (getParent()) {
+		setPosition(m_cao->getPosition());
 		m_sneak_node_exists = false;
 		added_velocity = v3f(0.0f);
 		return;
@@ -780,6 +789,8 @@ void LocalPlayer::old_move(f32 dtime, Environment *env, f32 pos_max_d,
 	if (free_move) {
 		position += m_speed * dtime;
 		setPosition(position);
+
+		touching_ground = false;
 		m_sneak_node_exists = false;
 		added_velocity = v3f(0.0f);
 		return;
