@@ -85,33 +85,36 @@ cd $libdir
 [ -d luajit ] || unzip -o $packagedir/luajit-$luajit_version.zip -d luajit
 [ -d leveldb ] || unzip -o $packagedir/libleveldb-$leveldb_version.zip -d leveldb
 
-# Get minetest
-cd $builddir
-if [ ! "x$EXISTING_MINETEST_DIR" = "x" ]; then
-	ln -s $EXISTING_MINETEST_DIR $CORE_NAME
+# Set source dir, downloading Minetest as needed
+if [ -n "$EXISTING_MINETEST_DIR" ]; then
+	sourcedir="$( cd "$EXISTING_MINETEST_DIR" && pwd )"
 else
-	[ -d $CORE_NAME ] && (cd $CORE_NAME && git pull) || (git clone -b $CORE_BRANCH $CORE_GIT)
+	sourcedir=$PWD/$CORE_NAME
+	[ -d $CORE_NAME ] && { pushd $CORE_NAME; git pull; popd; } || \
+		git clone -b $CORE_BRANCH $CORE_GIT $CORE_NAME
+	if [ -z "$NO_MINETEST_GAME" ]; then
+		[ -d games/$GAME_NAME ] && { pushd games/$GAME_NAME; git pull; popd; } || \
+			git clone -b $GAME_BRANCH $GAME_GIT games/$GAME_NAME
+	fi
 fi
-cd $CORE_NAME
-git_hash=$(git rev-parse --short HEAD)
 
-# Get minetest_game
-cd games
-if [ "x$NO_MINETEST_GAME" = "x" ]; then
-	[ -d $GAME_NAME ] && (cd $GAME_NAME && git pull) || (git clone -b $GAME_BRANCH $GAME_GIT)
-fi
-cd ../..
+git_hash=$(cd $sourcedir && git rev-parse --short HEAD)
 
 # Build the thing
-cd $CORE_NAME
-[ -d _build ] && rm -Rf _build/
-mkdir _build
-cd _build
-cmake .. \
+cd $builddir
+[ -d build ] && rm -rf build
+mkdir build
+cd build
+
+irr_dlls=$(echo $libdir/irrlicht/bin/*.dll | tr ' ' ';')
+vorbis_dlls=$(echo $libdir/libvorbis/bin/libvorbis{,file}-*.dll | tr ' ' ';')
+gettext_dlls=$(echo $libdir/gettext/bin/lib{intl,iconv}-*.dll | tr ' ' ';')
+
+cmake -S $sourcedir -B . \
+	-DCMAKE_TOOLCHAIN_FILE=$toolchain_file \
 	-DCMAKE_INSTALL_PREFIX=/tmp \
 	-DVERSION_EXTRA=$git_hash \
 	-DBUILD_CLIENT=1 -DBUILD_SERVER=0 \
-	-DCMAKE_TOOLCHAIN_FILE=$toolchain_file \
 	\
 	-DENABLE_SOUND=1 \
 	-DENABLE_CURL=1 \
@@ -169,7 +172,7 @@ cmake .. \
 
 make -j$(nproc)
 
-[ "x$NO_PACKAGE" = "x" ] && make package
+[ -z "$NO_PACKAGE" ] && make package
 
 exit 0
 # EOF
