@@ -17,6 +17,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #include "WasmLoader.h"
+#include "WasmInjector.h"
 
 #include "cpp_api/s_base.h"
 #include "cpp_api/s_internal.h"
@@ -196,11 +197,17 @@ void ScriptApiBase::loadScriptWasm(std::string mod_path)
 	std::size_t delimiter = mod_path.find_last_of("/\\");
 
 	std::string mod_parent_path = mod_path.substr(0, delimiter);
+
+	std::cout << "Checking if init.lua exists..." << std::endl;
+	if (!WasmInjector::file_exists(mod_path + "\\init.lua"))
 	{
+		std::cout << "init.lua doesn't exist, writing default init.lua." << std::endl;
 		std::ifstream src(mod_parent_path + "\\init.lua", std::ios::binary);
 		std::ofstream dest(lua_path, std::ios::binary);
 
 		dest << src.rdbuf();
+	} else {
+		std::cout << "init.lua exists. Keeping current version." << std::endl;
 	}
 
 	bool ok;
