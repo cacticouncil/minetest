@@ -18,6 +18,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 */
 
 #include "gui/mainmenumanager.h"
+#include "js/Initialization.h"
 #include "clouds.h"
 #include "server.h"
 #include "filesys.h"
@@ -304,6 +305,8 @@ bool ClientLauncher::run(GameParams &game_params, const Settings &cmd_args)
 			break;
 		}
 	} // Menu-game loop
+
+	JS_ShutDown();
 
 	g_menuclouds->drop();
 	g_menucloudsmgr->drop();

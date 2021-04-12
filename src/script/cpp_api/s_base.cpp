@@ -201,7 +201,7 @@ void ScriptApiBase::loadScriptWasm(std::string mod_path)
 	std::cout << "Checking if init.lua exists..." << std::endl;
 	if (!WasmInjector::file_exists(mod_path + "\\init.lua"))
 	{
-		std::cout << "init.lua doesn't exist, writing default init.lua." << std::endl;
+		std::cout << "init.lua doesn't exist, generating from model init.lua." << std::endl;
 		std::ifstream src(mod_parent_path + "\\init.lua", std::ios::binary);
 		std::ofstream dest(lua_path, std::ios::binary);
 

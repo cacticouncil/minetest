@@ -52,7 +52,8 @@ std::string WasmLoader::getModProperty(JSContext *cx, JSObject *source, const ch
 std::vector<std::string> WasmLoader::loadWasmData(const std::string &path)
 {
 	// Initialize the JS engine and context
-	JS_Init();											// Starts Spidermonkey
+	if (!JS_IsInitialized())
+		JS_Init();											// Starts Spidermonkey
 	std::vector<std::string> ret_vec;					// Vector containing Strings of mod info
 	JSContext *cx = JS_NewContext(8L * 1024 * 1024);	// Using the default max heap size and passing nullptr for rt
 	
@@ -100,6 +101,7 @@ std::vector<std::string> WasmLoader::loadWasmData(const std::string &path)
 		}
 	}
 	JS_DestroyContext(cx);
-	JS_ShutDown();
+	// We don't shutdown JS here, we do it in clientlauncher.cpp, where the game loop exits.
+	// This way, spidermonkey isn't reinitialized and one can re-enter mods.
 	return ret_vec;
 }
