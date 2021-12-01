@@ -177,6 +177,12 @@ public:
 	unsigned int queueAsync(const std::string &serialized_fct,
 			const std::string &serialized_params);
 
+		/** start playing a sound and return handle */
+	s32 playSound(const SimpleSoundSpec &spec, bool looped);
+	/** stop playing a sound started with playSound() */
+	void stopSound(s32 handle);
+
+
 private:
 
 	/** find and run the main menu script */
@@ -295,11 +301,5 @@ private:
 	bool        m_clouds_enabled = true;
 	/** data used to draw clouds */
 	clouddata   m_cloud;
-
-	/** start playing a sound and return handle */
-	s32 playSound(const SimpleSoundSpec &spec, bool looped);
-	/** stop playing a sound started with playSound() */
-	void stopSound(s32 handle);
-
 
 };

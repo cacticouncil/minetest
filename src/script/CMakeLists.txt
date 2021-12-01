@@ -19,5 +19,6 @@ set(client_SCRIPT_SRCS
 	${client_SCRIPT_COMMON_SRCS}
 	${client_SCRIPT_CPP_API_SRCS}
 	${client_SCRIPT_LUA_API_SRCS}
+	${client_SCRIPT_NATIVE_API_SRCS}
 	PARENT_SCOPE)
 
