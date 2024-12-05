@@ -1,0 +1,14 @@
+8/27/24-9/2/24: 9 hours, reading over the installation documents and getting to know the design behind the code
+9/3/24-9/9/24: 11 hours, attempted to install the repository on my device locally, ran into a few roadbumps and was not able to complete the process
+9/10/24-9/16/24: 10 hours, finished installing the repository after guidance from other members of the research team and outlining my issues
+9/17/24-9/23/24: 9 hours, as requested I made a mod of my own to change the texture on a block and this allowed me to better understand what goes on behind the mods and what we're doing specifically
+9/24/24-9/30/24: 10 hours, looked over the documentation and code to see what classes I might want to work on
+10/1/24-10/7/24: 10 hours, chose to work on the l_storage and l_nodemeta classes after assessing the current state of the entire project
+10/8/24-10/14/24: 9 hours, looked over the l_nodemeta class and began working with Oliver to finish the incomplete functions there
+10/15/24-10/21/24: 5 hours, I was out of town and wasn't able to do much besides contacting Oliver and testing the code we had created so far
+10/22/24-10/28/24: 10 hours, finished the function Oliver and I were working on in the l_nodemeta class and did a bit of testing, though we still need to test a lot more
+10/29/24-11/4/24: 11 hours, further testing on l_nodemeta and I began looking into l_storage to work on that as well (mainly the structure behind it since it differs from l_nodemeta)
+11/5/24-11/11/24: 7 hours, had exams and homework this week so I wasn't able to do as much, but it was more of the same testing and editing of existing code.
+11/12/24-11/18/24: 10 hours, worked on the l_storage class and writing a test for the function that already exists there
+11/19/24-11/25/24: 10 hours, reinstalling the entire repository and transferring files over from local repository to GitHub-connected repository
+11/26/24-12/6/24: 0 hours, Thanksgiving break and finals
