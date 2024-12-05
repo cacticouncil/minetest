@@ -6,7 +6,7 @@ function utf8ToString(mem, pos) {
     return s;
 }
  
-var buffer = new Uint8Array(%wbC:\Users\Erik\DIR\minetest\mods\simple_wasm\mod.wasmwb%);
+var buffer = new Uint8Array(%wbC:\Users\elija\Documents\GitHub\minetest\mods\simple_wasm\mod.wasmwb%);
 var m = new WebAssembly.Instance(new WebAssembly.Module(buffer));
 var memArray = new Uint8Array(m.exports.memory.buffer);
 var ex = m.exports;

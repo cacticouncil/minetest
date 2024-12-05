@@ -647,8 +647,9 @@ static bool read_config_file(const Settings &cmd_args)
 
 static void init_log_streams(const Settings &cmd_args)
 {
-	//std::string log_filename = porting::path_user + DIR_DELIM + DEBUGFILE;
-	std::string log_filename = porting::path_user + DIR_DELIM + "worlds" + DIR_DELIM + "test" + DIR_DELIM + DEBUGFILE;
+	// std::string log_filename = porting::path_user + DIR_DELIM + DEBUGFILE;
+	std::string log_filename = porting::path_user + DIR_DELIM + "worlds" + DIR_DELIM +
+				   "test" + DIR_DELIM + DEBUGFILE;
 
 	if (cmd_args.exists("logfile"))
 		log_filename = cmd_args.get("logfile");
