@@ -52,6 +52,7 @@ minetest.register_chatcommand("native_nodemeta_get_inventory",
 			return false, "Failure, native_get_inventory() returns the right InvRef"
 		end
 	end
+	--TODO: collaborate with Oliver and see if this actually works given different stacks, the same stack, etc.
 })
 
 --comparison test

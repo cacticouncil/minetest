@@ -12,5 +12,9 @@ minetest.register_chatcommand("lua_storage_get_mod_storage",
 		local pos = player:get_pos();
 		local mods = player:get_mod_storage();
 		minetest.log(mods);
+		--TODO: test and check if get_mod_storage() actually returns the mods?
+		--TODO: compare get_mod_storage() output with actual mod list, test with different mods enabled to see if there's a difference
 	end
 })
+
+--TODO: see if there's any other functions that can be tested in the storage class, e.g. Initialize, StorageRef functions?
