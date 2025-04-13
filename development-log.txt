@@ -2,3 +2,8 @@ Attempted to solve native object registration and clearing - 4hr
 Attempted to solve previous issue and added logging utility- 1hr 30 min
 Added utility that sets map to given block, fixed test for generate_ores, and added utility that removes node decorations - 2hr 40 min
 Completed passing create_schematic test, finished serialize_schematic test, started read_schematic test - 3 hr 30 min
+Fully completed mapgen.cpp and wrote tests for server.cpp up to remove_player - 5 hr
+Completed server.cpp tests up to show_formspec - 1 hr 5 min
+Completed server.cpp tests up to get_worldpath - 41 min
+Completed every server.cpp test except for notify_authentication_modified - 3 hr 55 min
+Completed notify_authentication_modified - 1 hr 21 min

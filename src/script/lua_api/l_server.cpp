@@ -1025,7 +1025,7 @@ void ModApiServer::Initialize(lua_State *L, int top)
 	API_FCT(sound_fade);
 	API_FCT(native_sound_fade);
 	API_FCT(dynamic_add_media_raw);
-	API_FCT(native_dynamic_add_media_raw);
+	registerFunction(L, "native_dynamic_add_media", l_native_dynamic_add_media_raw, top);
 
 	API_FCT(get_player_information);
 	API_FCT(native_get_player_information);

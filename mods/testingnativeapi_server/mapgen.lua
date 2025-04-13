@@ -1,3 +1,5 @@
+--note: has only been tested on worlds named "mapgentest." You may need to write a utility that gets the current world name
+
 --deletes map database on startup so that mapgen is always used on load
 local modpath = core.get_modpath("testingnativeapi_server")
 
@@ -206,7 +208,7 @@ core.clear_registered_decorations()
 
 local testOre = {
     name = "testore",
-    y_max = 31,
+    y_max = 10,
     wherein = "default:stone",
     y_min = -31000,
     clust_scarcity = 1,
@@ -391,7 +393,13 @@ core.register_on_generated(
         end
     end
 )
-
+--cleans files up
+core.register_on_shutdown(
+    function()
+        os.remove("luaschem.mts")
+        os.remove("nativeschem.mts")
+    end
+)
 --helper function to retrieve biomes
 core.register_chatcommand("get_biomes",
 {
@@ -1318,7 +1326,8 @@ core.register_chatcommand("lua_create_schematic", {
     description="Invokes lua_api > create_schematic",
     func = function (self)
         local f = io.open("luaschem.mts", "r")
-        if f ~= nil then return true, "Lua schematic file generated" 
+        if f ~= nil then 
+        return true, "Lua schematic file generated" 
         else return false, "Lua schematic not generated" end
     end
 })
@@ -1327,7 +1336,7 @@ core.register_chatcommand("native_create_schematic", {
     description="Invokes native_api > create_schematic",
     func = function (self)
         local f = io.open("nativeschem.mts", "r") 
-        if f ~= nil then  return true, "Native schematic file generated"
+        if f ~= nil then return true, "Native schematic file generated"
         else return false, "Native schematic not generated" end
     end
 })
@@ -1339,7 +1348,6 @@ core.register_chatcommand("test_create_schematic", {
         local luaData = luaFile:read("*all")
         local nativeFile = io.open("nativeschem.mts", "r")
         local nativeData = nativeFile:read("*all")
-
         if dump(luaData) == dump(nativeData) then return true, "Lua and native generated schematic files are identical"
         else return false, "Lua and native schematic files are not identical" end
     end

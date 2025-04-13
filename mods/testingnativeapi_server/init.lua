@@ -33,7 +33,7 @@ dofile(modpath .. "/base.lua")
 dofile(modpath .. "/http.lua")
 dofile(modpath .. "/object.lua")
 dofile(modpath .. "/mapgen.lua")
-
+dofile(modpath ..  "/server.lua")
 -- Load helper files
 dofile(modpath .. "/other.lua")
 dofile(modpath .. "/server_test.lua")
