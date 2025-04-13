@@ -17,10 +17,20 @@ core.register_entity("testingnativeapi_server:testentity",
         spritediv = {x = 10, y = 10},
         initial_sprite_basepos = {x = 0, y = 0},
     },
-
-
+    get_type=function ()
+        return "player"
+    end
 })
 
+--helper function that spawns test entity at player's position for debugging
+core.register_chatcommand("test_spawn", {
+    description="Spawns a test entity at player's position",
+    func = function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        return true, "Test entity spawned at: "..dump(entity:get_pos())
+    end
+})
 core.register_chatcommand("lua_remove", {
     description="Invokes lua_api > remove",
     func=function ()
@@ -185,3 +195,35 @@ core.register_chatcommand("test_move_to", {
         else return false, dump(luaPos)..dump(nativePos) end
     end
 })
+
+
+local test_tool_caps = {
+    full_punch_interval = 0.0,
+    max_drop_level = 3,
+    groupcaps = {
+        cracky = {
+            times = {[1] = 0.1, [2] = 0.1, [3] = 0.1},
+            uses = 0,          
+            maxlevel = 3,
+        },
+        fleshy = {
+            times = {[1] = 0.1},
+            uses = 0,         
+            maxlevel = 3,
+        }
+    },
+    damage_groups = {fleshy = 100},
+}
+core.register_chatcommand("lua_punch", {
+    description="Invokes lua_api > punch",
+    func = function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        --single punch will always kill entity because it has 1 health
+        core.chat_send_all(dump(player))
+        entity:punch(player, 0.0, test_tool_caps, nil)
+        if entity:get_pos() == nil then return true, "Entity was punched"
+        else return false, "Entity was not punched" end
+    end
+})
+
