@@ -3,6 +3,7 @@ core.register_on_joinplayer(function(player)
     playerName = player:get_player_name()
 end)
 
+local rightClicked = false
 core.register_entity("testingnativeapi_server:testentity", 
 {
     initial_properties = {
@@ -19,6 +20,9 @@ core.register_entity("testingnativeapi_server:testentity",
     },
     get_type=function ()
         return "player"
+    end,
+    on_rightclick = function(self, clicker)
+        rightClicked = true
     end
 })
 
@@ -214,6 +218,7 @@ local test_tool_caps = {
     },
     damage_groups = {fleshy = 100},
 }
+
 core.register_chatcommand("lua_punch", {
     description="Invokes lua_api > punch",
     func = function ()
@@ -227,3 +232,176 @@ core.register_chatcommand("lua_punch", {
     end
 })
 
+core.register_chatcommand("lua_right_click", {
+    description="Invokes lua_api > right_click",
+    func = function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+
+        rightClicked = false
+        entity:right_click(player)
+        entity:remove()
+        if rightClicked then return true, "Entity was right clicked"
+        else return false, "Entity was not right clicked" end
+    end
+})
+
+core.register_chatcommand("native_right_click", {
+    description="Invokes native_api > right_click",
+    func = function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+
+        rightClicked = false
+        entity:native_right_click(player)
+        entity:remove()
+        if rightClicked then return true, "Entity was right clicked"
+        else return false, "Entity was not right clicked" end
+    end
+})
+
+core.register_chatcommand("test_right_click", {
+    description="Invokes right_click with native and Lua APIs",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+
+        rightClicked = false
+        entity:right_click(player)
+        local luaClicked = rightClicked
+
+        rightClicked = false
+        entity:native_right_click(player)
+        local nativeClicked = rightClicked
+
+        entity:remove()
+        if luaClicked ~= nil and luaClicked == nativeClicked then return true, "Entity right clicked by native and Lua functions"
+        else return false, "Lua clicked: "..tostring(luaClicked).." Native clicked: "..tostring(nativeClicked) end
+    end
+})
+
+core.register_chatcommand("lua_get_hp", {
+    description="Invokes lua_api > get_hp",
+    func = function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+        
+        local hp = entity:get_hp()
+
+        entity:remove()
+        if hp == 1 then return true, "Entity HP successfully retrieved"
+        else return false, "Entity HP returned: "..tostring(hp) end
+    end
+})
+
+core.register_chatcommand("lua_set_hp", {
+    description="Invokes lua_api > set_hp",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+        
+        entity:set_hp(3, "reason")
+        local hp = entity:get_hp()
+
+        entity:remove()
+        if hp == 3 then return true, "HP set correctly"
+        else return false, "HP set to: "..tostring(hp) end
+    end
+})
+
+core.register_chatcommand("native_set_hp", {
+    description="Invokes native_api > set_hp",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+        
+        entity:native_set_hp(3, "reason")
+        local hp = entity:get_hp()
+
+        entity:remove()
+        if hp == 3 then return true, "HP set correctly"
+        else return false, "HP set to: "..tostring(hp) end
+    end
+})
+
+core.register_chatcommand("test_set_hp", {
+    description="Compares set_hp output for Lua and native APIs",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+
+        entity:set_hp(3)
+        local luaHP = entity:get_hp()
+        entity:set_hp(1)
+
+        entity:native_set_hp(3)
+        local nativeHP = entity:native_get_hp()
+
+        entity:remove()
+        if luaHP ~= nil and luaHP == nativeHP then return true, "Lua and native API calls set HP to same value"
+        else return false, "Lua API: "..tostring(luaHP).." Native API: "..tostring(nativeHP) end
+    end
+})
+
+core.register_chatcommand("native_get_hp", {
+    description="Invokes native_api > get_hp",
+    func = function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+        
+        local hp = entity:native_get_hp()
+
+        entity:remove()
+        if hp == 1 then return true, "Entity HP successfully retrieved"
+        else return false, "Entity HP returned: "..tostring(hp) end
+    end
+})
+
+core.register_chatcommand("test_get_hp", {
+    description="Compares get_hp output for Lua and native APIs",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:getpos(), "testingnativeapi_server:testentity", "")
+
+        local luaHP = entity:get_hp()
+        local nativeHP = entity:native_get_hp()
+
+        entity:remove()
+        if luaHP ~= nil and luaHP == nativeHP then return true, "Lua and native API calls returned same output"
+        else return false, "Lua API: "..tostring(luaHP).." Native API: "..tostring(nativeHP) end
+    end
+})
+
+core.register_chatcommand("lua_get_inventory", {
+    description="Invokes lua_api > get_inventory",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local inv = player:get_inventory()
+
+        if inv then return true, "Inventory retrieved successfully"
+        else return false, "Function returns nil" end
+    end
+})
+
+core.register_chatcommand("native_get_inventory", {
+    description="Invokes native_api > get_inventory",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local inv = player:native_get_inventory()
+
+        if inv then return true, "Inventory retrieved successfully"
+        else return false, "Function returns nil" end
+    end
+})
+
+core.register_chatcommand("test_get_inventory", {
+    description="Compares output of native and Lua APIs for get_inventory",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local luaInv = player:get_inventory()
+        local nativeInv = player:native_get_inventory()
+
+        if luaInv ~= nil and dump(luaInv) == dump(nativeInv) then return true, "Native and Lua functions return same value"
+        else return false, "Lua inv: "..dump(luaInv).."Native Inv: "..dump(nativeInv) end
+    end
+})
