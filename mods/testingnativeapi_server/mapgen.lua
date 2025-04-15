@@ -1,5 +1,4 @@
 --note: has only been tested on worlds named "mapgentest." You may need to write a utility that gets the current world name
-
 --deletes map database on startup so that mapgen is always used on load
 local modpath = core.get_modpath("testingnativeapi_server")
 
@@ -10,6 +9,7 @@ os.remove(_G["Path"])
 CompareTables = _G["CompareTables"]
 Log = _G["Log"]
 os.remove("logfile.txt")
+--disable mapgen tests when not using to speed up load times
 --collects data from APIs that only work on mapgen threads
 MapgenObj = nil
 NativeMapgenObj = nil
@@ -248,15 +248,12 @@ local testSchem = {
 	}
 }
 
---issue: registered schematics table is not available at init time?
-local luaSchematic
-core.register_schematic(testSchem)
---luaSchematic = minetest.registered_schematics["testSchem"]
+local luaSchemHandle
+luaSchemHandle = core.register_schematic(testSchem)
 core.clear_registered_schematics()
 
-local nativeSchematic
-core.register_schematic(testSchem)
---nativeSchematic = minetest.registered_schematics["testSchem"]
+local nativeSchemHandle
+nativeSchemHandle = core.register_schematic(testSchem)
 core.clear_registered_schematics()
 
 --test clear_registered_biomes
@@ -1140,7 +1137,7 @@ core.register_chatcommand("lua_register_schematic",
 {
     description = "Invokes lua_api > register_schematic",
     func = function(self)
-        if luaSchematic then return true, "Lua schematic registered"..dump(luaSchematic)
+        if luaSchemHandle then return true, "Lua schematic registered"
         else return false, "Lua schematic not registered" end
     end
 })
@@ -1150,17 +1147,21 @@ core.register_chatcommand("native_register_schematic",
 {
     description = "Invokes native_api > register_ore",
     func = function(self)
-        if nativeSchematic then return true, "Native ore registered"..dump(nativeSchematic)
-        else return false, "Native ore not registered" end
+        if nativeSchemHandle then return true, "Native schematic registered"
+        else return false, "Native schematic not registered" end
     end
-})
+})        
+
+--[[can only test handle validity because core.registered_schematics
+is unavailable at runtime despite being in the docs]]--
 
 core.register_chatcommand("test_register_schematic",
 {
-    description = "Compares output of lua and native registered ores",
+    description = "Compares handle validity of Lua and native schematics",
     func = function (self)
-        if dump(luaSchematic) == dump(nativeSchematic) and luaSchematic ~= nil then return true, "Lua and native ores identical"
-        else return false, "Lua and native ores different"..dump(luaSchematic)..dump(nativeSchematic) end
+        
+        if luaSchemHandle ~= nil and nativeSchemHandle ~= nil then return true, "Lua and native ores identical"
+        else return false, "Lua schematic handle "..tostring(luaSchemHandle).." Native schematic handle: "..tostring(nativeSchemHandle) end
     end
 })
 
