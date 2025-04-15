@@ -163,7 +163,7 @@ int NativeObjectRef::n_get_animation(ServerActiveObject *sao, v2f &frames, float
 	}
 }
 
-bool NativeObjectRef::n_set_local_animation(Server* server, RemotePlayer* player, v2s32 frames[], const bool frame_speed)
+bool NativeObjectRef::n_set_local_animation(Server* server, RemotePlayer* player, v2s32 frames[], const f32 frame_speed)
 {
 	if (!player)
 		return false;

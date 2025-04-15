@@ -53,7 +53,7 @@ public:
 	static int n_get_animation(ServerActiveObject *sao, v2f &frames,
 			float &frame_speed, float &frame_blend, bool &frame_loop);
 	static bool n_set_local_animation(Server *server, RemotePlayer *player,
-			 v2s32 frames[], const bool frame_speed);
+			 v2s32 frames[], const f32 frame_speed);
 	static int n_get_local_animation(RemotePlayer *player, v2s32 *frames, float& frame_speed);
 	static int n_set_eye_offset(Server *server, RemotePlayer *player,
 			const v3f &offset_first, const v3f &offset_third);

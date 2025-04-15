@@ -795,10 +795,202 @@ core.register_chatcommand("test_get_animation", {
     end
 })
 
+local testLocalIdle = {x=23, y=69}
+local testLocalWalk = {x=33, y=13}
+local testLocalDig = {x=24, y=65}
+local testLocalWWD = {x=100, y=21}
+local testLocalFS = 60
+local testLAnim = {testLocalIdle, testLocalWalk, testLocalDig, testLocalWWD, testLocalFS}
+
+core.register_chatcommand("lua_set_local_animation", {
+    description="Invokes lua_api > set_local_animation",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local initAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+        player:set_local_animation(testLAnim[1], testLAnim[2], testLAnim[3], testLAnim[4], testLAnim[5])
+        idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local setAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+        player:set_local_animation(initAnim[1], initAnim[2], initAnim[3], initAnim[4], initAnim[5])
+
+        if (idle and walk and dig and walk_while_dig and frame_speed) and dump(initAnim) ~= dump(setAnim) then
+        return true, "Local animation set"
+        else return false, "Set animation: "..dump(setAnim) end
+    end
+})
+
+core.register_chatcommand("native_set_local_animation", {
+    description="Invokes native_api > set_local_animation",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local initAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+        player:native_set_local_animation(testLAnim[1], testLAnim[2], testLAnim[3], testLAnim[4], testLAnim[5])
+        idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local setAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+        player:set_local_animation(initAnim[1], initAnim[2], initAnim[3], initAnim[4], initAnim[5])
+        
+        if (idle and walk and dig and walk_while_dig and frame_speed) and dump(initAnim) ~= dump(setAnim) then
+        return true, "Local animation set"
+        else return false, "Set animation: "..dump(setAnim) end
+    end
+})
+
+core.register_chatcommand("test_set_local_animation", {
+    description="Compares output of Lua and native set_local_animation",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local initAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+        player:set_local_animation(testLAnim[1], testLAnim[2], testLAnim[3], testLAnim[4], testLAnim[5])
+        idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local luaAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+        player:set_local_animation(initAnim[1], initAnim[2], initAnim[3], initAnim[4], initAnim[5])
+        player:native_set_local_animation(testLAnim[1], testLAnim[2], testLAnim[3], testLAnim[4], testLAnim[5])
+        idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local nativeAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+        player:set_local_animation(initAnim[1], initAnim[2], initAnim[3], initAnim[4], initAnim[5])
+
+        if (idle and walk and dig and walk_while_dig and frame_speed) and dump(luaAnim) == dump(nativeAnim)
+        then return true, "Lua and native set animation to same value"
+        else return false, "Lua animation: "..dump(luaAnim).."Native animation: "..dump(nativeAnim) end
+    end
+})
+
 core.register_chatcommand("lua_get_local_animation", {
     description="Invokes lua_api > get_local_animation",
     func=function ()
         local player=core.get_player_by_name(playerName)
+        local idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local anim = {idle, walk, dig, walk_while_dig, frame_speed}
+        if (idle and walk and dig and walk_while_dig and frame_speed) then return true, "Animation returned"
+        else return false, "Animation not returned"..dump(anim) end
+    end
+})
 
+core.register_chatcommand("native_get_local_animation", {
+    description="Invokes native_api > get_local_animation",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+        local idle, walk, dig, walk_while_dig, frame_speed = player:native_get_local_animation()
+        local anim = {idle, walk, dig, walk_while_dig, frame_speed}
+        if (idle and walk and dig and walk_while_dig and frame_speed) then return true, "Animation returned"
+        else return false, "Animation not returned"..dump(anim) end
+    end
+})
+
+core.register_chatcommand("test_get_local_animation", {
+    description="Compares Lua and native API outputs for get_local_animation",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+        
+        local idle, walk, dig, walk_while_dig, frame_speed = player:get_local_animation()
+        local luaAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+        local idle, walk, dig, walk_while_dig, frame_speed = player:native_get_local_animation()
+        local nativeAnim = {idle, walk, dig, walk_while_dig, frame_speed}
+
+        if (idle and walk and dig and walk_while_dig and frame_speed) and dump(luaAnim) == dump(nativeAnim) then return true, "Lua and native local animations identical"
+        else return false, "Lua animation: "..dump(luaAnim).."Native animation: "..dump(nativeAnim) end
+    end
+
+})
+
+local testFPOffset = {x=1, y=1, z=1}
+local testTPOffset = {x=1, y=1, z=1}
+local testEyeOffset = {testFPOffset, testTPOffset}
+
+core.register_chatcommand("lua_set_eye_offset", {
+    description="Invokes lua_api > set_eye_offset",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        player:set_eye_offset(testEyeOffset[1], testEyeOffset[2])
+        local FPOffset, TPOffset = player:get_eye_offset()
+        player:set_eye_offset()
+
+        if (FPOffset and TPOffset) and FPOffset ~= {x=0, y=0, z=0} and TPOffset ~= {x=0,y=0,z=0}
+        then return true, "Eye offset set"
+        else return false, "FP Offset: "..dump(FPOffset).."TP Offset: "..dump(TPOffset) end
+    end
+})
+
+core.register_chatcommand("native_set_eye_offset", {
+    description="Invokes native_api > set_eye_offset",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        player:native_set_eye_offset(testEyeOffset[1], testEyeOffset[2])
+        local FPOffset, TPOffset = player:get_eye_offset()
+        player:set_eye_offset()
+
+        if (FPOffset and TPOffset) and FPOffset ~= {x=0, y=0, z=0} and TPOffset ~= {x=0,y=0,z=0}
+        then return true, "Eye offset set"
+        else return false, "FP Offset: "..dump(FPOffset).."TP Offset: "..dump(TPOffset) end
+    end
+})
+
+core.register_chatcommand("test_set_eye_offset", {
+    description="Tests Lua and native set_eye_offset",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+        player:set_eye_offset()
+        player:set_eye_offset(testEyeOffset[1], testEyeOffset[2])
+        local FPOffset, TPOffset = player:get_eye_offset()
+        local luaOffset = {FPOffset, TPOffset}
+        player:set_eye_offset()
+        player:native_set_eye_offset(testEyeOffset[1], testEyeOffset[2])
+        local FPOffset, TPOffset = player:get_eye_offset()
+        local nativeOffset = {FPOffset, TPOffset}
+        player:set_eye_offset()
+
+        if (FPOffset and TPOffset) and dump(luaOffset) == dump(nativeOffset) then return true, "Lua and native functions set offset to same value"
+        else return false, "Lua offset: "..dump(luaOffset).."Native offset: "..dump(nativeOffset) end
+    end
+})
+
+core.register_chatcommand("lua_get_eye_offset", {
+    description="Invokes lua_api > get_eye_offset",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local FPOffset, TPOffset = player:get_eye_offset()
+        local offset = {FPOffset, TPOffset}
+        if FPOffset and TPOffset then return true, "Got eye offset"..dump(offset)
+        else return false, "Function returned nil" end
+    end
+})
+
+core.register_chatcommand("native_get_eye_offset", {
+    description="Invokes native_api > get_eye_offset",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local FPOffset, TPOffset = player:native_get_eye_offset()
+        local offset = {FPOffset, TPOffset}
+        if FPOffset and TPOffset then return true, "Got eye offset"
+        else return false, "Function returned nil" end
+    end
+})
+
+core.register_chatcommand("test_get_eye_offset", {
+    description="Compares output of Lua and native get_eye_offset",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local FPOffset, TPOffset = player:get_eye_offset()
+        local luaOffset = {FPOffset, TPOffset}
+        local FPOffset, TPOffset = player:native_get_eye_offset()
+        local nativeOffset =  {FPOffset, TPOffset}
+        if (FPOffset and TPOffset) and dump(luaOffset) == dump(nativeOffset) then return true, "Lua and native functions returned same offset"
+        else return false, "Lua offset: "..dump(luaOffset).."Native offset: "..dump(nativeOffset) end
+    end
+})
+
+core.register_chatcommand("lua_send_mapblock", {
+    description="Invokes lua_api > send_mapblock",
+    func=function ()
     end
 })
