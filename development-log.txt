@@ -8,3 +8,7 @@ Completed server.cpp tests up to get_worldpath - 41 min
 Completed every server.cpp test except for notify_authentication_modified - 3 hr 55 min
 Completed notify_authentication_modified - 1 hr 21 min
 Started server.cpp up to punch - 2 hr
+Skipped punch and wrote server.cpp tests up to test_get_inventory - 25 min
+Finished punch, fixed mapgen test, and wrote server.cpp tests up to test_get_local_animation - 2 hr 30 min
+Wrote server.cpp tests up to send_mapblock - 1 hr 5 min
+Rewrote all env.cpp functions with discrete Lua and native components - 7 hr
