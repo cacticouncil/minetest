@@ -992,5 +992,399 @@ core.register_chatcommand("test_get_eye_offset", {
 core.register_chatcommand("lua_send_mapblock", {
     description="Invokes lua_api > send_mapblock",
     func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local pos = player:get_pos()
+        local blockpos = vector.divide(pos, 16)
+        blockpos["y"] = blockpos["y"]+3
+        local lim = blockpos
+        lim["y"] = blockpos["y"]+1
+        --emerges area first to generate sendable mapblock
+        core.emerge_area(blockpos, lim, nil, nil)
+        local res = player:send_mapblock(blockpos)
+
+        if res == true then return res, "Mapblock sent"
+        else return false, "Mapblock not sent" end
+    end
+})
+
+core.register_chatcommand("native_send_mapblock", {
+    description="Invokes native_api > send_mapblock",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local pos = player:get_pos()
+        local blockpos = vector.divide(pos, 16)
+        blockpos["y"] = blockpos["y"]+3
+        local lim = blockpos
+        lim["y"] = blockpos["y"]+1
+        --emerges area first to generate sendable mapblock
+        core.emerge_area(blockpos, lim, nil, nil)
+        local res = player:native_send_mapblock(blockpos)
+
+        if res == true then return res, "Mapblock sent"
+        else return false, "Mapblock not sent" end
+    end
+})
+
+core.register_chatcommand("test_send_mapblock", {
+    description="Compares output of Lua and native send_mapblock functions",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local pos = player:get_pos()
+        local blockpos = vector.divide(pos, 16)
+        blockpos["y"] = blockpos["y"]+3
+        local lim = blockpos
+        lim["y"] = blockpos["y"]+1
+        core.emerge_area(blockpos, lim, nil, nil)
+
+        local luaRes = player:send_mapblock(blockpos)
+        local nativeRes = player:native_send_mapblock(blockpos)
+
+        if nativeRes == true and luaRes == true then return true, "Mapblocks sent"
+        else return false, "Lua mapblock sent: "..tostring(luaRes).." Native mapblock sent: "..tostring(nativeRes) end
+    end
+})
+
+core.register_chatcommand("lua_set_animation_frame_speed", {
+    description="Invokes lua_api > set_animation_frame_speed",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local _, initFS, _, _ = player:get_animation()
+        player:set_animation_frame_speed(100)
+        local _, setFS, _, _ = player:get_animation()
+        player:set_animation_frame_speed(initFS)
+
+        if initFS ~= setFS then return true, "Function set frame speed"
+        else return false, "Function did not return frame speed" end
+    end
+})
+
+core.register_chatcommand("native_set_animation_frame_speed", {
+    description="Invokes native_api > set_animation_frame_speed",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        local _, initFS, _, _ = player:get_animation()
+        player:native_set_animation_frame_speed(100)
+        local _, setFS, _, _ = player:get_animation()
+        player:set_animation_frame_speed(initFS)
+
+        if initFS ~= setFS then return true, "Function set frame speed"
+        else return false, "Function did not return frame speed" end
+    end
+})
+
+core.register_chatcommand("test_set_animation_frame_speed", {
+    description="Compares output of Lua and native functions",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+        local _, initFS, _, _ = player:get_animation()
+
+        player:set_animation_frame_speed(100)
+        local _, luaFS, _, _ = player:get_animation()
+        player:set_animation_frame_speed(initFS)
+
+        player:native_set_animation_frame_speed(100)
+        local _, nativeFS, _, _ = player:get_animation()
+        player:set_animation_frame_speed(initFS)
+
+        if luaFS ~= nil and luaFS == nativeFS then return true, "Lua and native functions set frame speed to same value"
+        else return false, "Lua FS: "..tostring(luaFS).." Native FS :"..tostring(nativeFS) end
+    end
+})
+
+local initBP = {x=0, y=0, z=0}
+local testBP = {x=1,y=1,z=1}
+
+core.register_chatcommand("lua_set_bone_position", {
+    description="Invokes lua_api > set_bone_position",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        player:set_bone_position("", initBP, nil)
+        player:set_bone_position("", testBP, nil)
+        local setBP = player:get_bone_position()
+        player:set_bone_position("", initBP, nil)
+
+        if initBP ~= setBP then return true, "Function set bone position"
+        else return false, "Funciton did not set bone position" end
+    end
+})
+
+core.register_chatcommand("native_set_bone_position", {
+    description="Invokes native_api > set_bone_position",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        player:set_bone_position("", initBP, nil)
+        player:native_set_bone_position("", testBP, nil)
+        local setBP = player:get_bone_position()
+        player:set_bone_position("", initBP, nil)
+
+        if initBP ~= setBP then return true, "Function set bone position"
+        else return false, "Funciton did not set bone position" end
+    end
+})
+
+core.register_chatcommand("test_set_bone_position", {
+    description="Compares output of Lua and native set_bone_position",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+
+        player:set_bone_position("", initBP, nil)
+        player:set_bone_position("", testBP, nil)
+        local luaBP = player:get_bone_position()
+        player:set_bone_position("", initBP, nil)
+        player:native_set_bone_position("", testBP, nil)
+        local nativeBP = player:get_bone_position()
+        player:set_bone_position("", initBP, nil)
+
+        if dump(luaBP) == dump(nativeBP) and luaBP then return true, "Lua and native functions set BP to same value"
+        else return false, "Lua BP: "..dump(luaBP).." Native BP: "..dump(nativeBP) end
+    end
+})
+core.register_chatcommand("lua_get_bone_position", {
+    description="Invokes lua_api > get_bone_position",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+        --gets the player's root bone
+        local bp = player:get_bone_position("")
+        if bp then return true, "Bone position returned"
+        else return false, "Bone position not returned" end
+    end
+})
+
+core.register_chatcommand("native_get_bone_position", {
+    description="Invokes native_api > get_bone_position",
+    func=function ()
+        local player=core.get_player_by_name(playerName)
+        --gets the player's root bone
+        local bp = player:native_get_bone_position("")
+        if bp then return true, "Bone position returned"
+        else return false, "Bone position not returned" end
+    end
+})
+
+core.register_chatcommand("test_get_bone_position", {
+    description="Compares lua and native function results for get_bone_position",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+
+        local luaBP = player:get_bone_position()
+        local nativeBP = player:get_bone_position()
+        if luaBP ~= nil and dump(luaBP) == dump(nativeBP) then return true, "Lua and native functions return same value"
+        else return false, "Lua BP: "..dump(luaBP).."Native BP: "..dump(nativeBP) end
+    end
+})
+
+--helper function that detaches all attachments from an object
+DetachAll = function (parent)
+    local children = parent:get_children()
+    for _, c in pairs(children) do
+        c:set_detach()
+    end
+end
+
+core.register_chatcommand("lua_set_attach", {
+    description="Invokes lua_api > set_attach",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        
+        DetachAll(player)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        entity:set_attach(player)
+        local attached = player:get_children()
+        entity:remove()
+
+        if next(attached) ~= nil then return true, "Entity was attached"
+        else return false, "Entity was not attached" end
+    end
+})
+
+core.register_chatcommand("native_set_attach", {
+    description="Invokes native_api > set_attach",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        
+        DetachAll(player)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        entity:native_set_attach(player)
+        local attached = player:get_children()
+        entity:remove()
+
+        if next(attached) ~= nil then return true, "Entity was attached"
+        else return false, "Entity was not attached" end
+    end
+})
+
+core.register_chatcommand("test_set_attach", {
+    description="Tests both Lua and native set_attach",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+
+        DetachAll(player)
+        entity:set_attach(player)
+        local luaAttached = player:get_children()
+        DetachAll(player)
+        entity:native_set_attach(player)
+        local nativeAttached = player:get_children()
+        DetachAll(player)
+        entity:remove()
+
+        if dump(luaAttached) == dump(nativeAttached) then return true, "Entities were attached"
+        else return false, "Lua attached: "..dump(luaAttached).."Native attached: "..dump(nativeAttached) end
+    end
+})
+
+core.register_chatcommand("lua_get_attach", {
+    description="Invokes lua_api > get_attach",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+
+        DetachAll(player)
+        entity:set_attach(player)
+        local attached = entity:get_attach()
+        entity:remove()
+
+        if attached then return true, "Got attachment info"
+        else return false, "Function returned nil" end
+    end
+})
+
+core.register_chatcommand("native_get_attach", {    
+    description="Invokes lua_api > get_attach",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+
+        DetachAll(player)
+        entity:set_attach(player)
+        local attached = entity:native_get_attach()
+        entity:remove()
+
+        if attached then return true, "Got attachment info"
+        else return false, "Function returned nil" end
+end
+})
+
+core.register_chatcommand("test_get_attach", {
+    description="Tests return value of Lua and native APIs for get_attach",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        
+        DetachAll(player)
+        entity:set_attach(player)
+        local luaAttach = entity:get_attach()
+        local nativeAttach = entity:get_attach()
+        entity:remove()
+
+        if luaAttach ~= nil and dump(luaAttach) == dump(nativeAttach) then return true, "Lua and native functions returned same value"
+        else return false, "Lua and native functions did not return same value" end
+    end
+})
+
+core.register_chatcommand("lua_get_children", {
+    description="Invokes lua_api > get_children",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        
+        DetachAll(player)
+        entity:set_attach(player)
+        local children = player:get_children()
+        entity:remove()
+
+        if next(children) ~= nil then return true, "Children returned"
+        else return false, "Children not returned" end
+    end
+})
+
+core.register_chatcommand("native_get_children", {
+    description="Invokes native_api > get_children",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        
+        DetachAll(player)
+        entity:set_attach(player)
+        local children = player:native_get_children()
+        entity:remove()
+
+        if next(children) ~= nil then return true, "Children returned"
+        else return false, "Children not returned" end
+    end
+})
+
+core.register_chatcommand("test_get_children", {
+    description="Compares get_children function for Lua and native APIs",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        
+        DetachAll(player)
+        entity:set_attach(player)
+        local children = player:get_children()
+        local nativeChildren = player:native_get_children()
+        entity:remove()
+
+        if dump(children) == dump(nativeChildren) then return true, "Lua and native functions returned same value"
+        else return false, "Lua children: "..dump(children).."Native children: "..dump(nativeChildren) end
+    end
+})
+
+core.register_chatcommand("lua_set_detach", {
+    description="Invokes lua_api > set_detach",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+
+        entity:set_attach(player)
+        entity:set_detach()
+        local attach = entity:get_attach()
+        entity:remove()
+
+        if attach == nil then return true, "Entity was detached"
+        else return false, "Entity was not detached" end
+    end
+})
+
+core.register_chatcommand("native_set_detach", {
+    description="Invokes native_api > set_detach",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+
+        entity:set_attach(player)
+        entity:native_set_detach()
+        local attach = entity:get_attach()
+        entity:remove()
+
+        if attach == nil then return true, "Entity was detached"
+        else return false, "Entity was not detached" end
+    end
+})
+
+core.register_chatcommand("test_set_detach", {
+    description="Compares result of set_attach from native and Lua APIs",
+    func=function ()
+        local player = core.get_player_by_name(playerName)
+        local entity = core.add_entity(player:get_pos(), "testingnativeapi_server:testentity", "")
+        
+        entity:set_attach(player)
+        entity:set_detach()
+        local luaAttached = entity:get_attach()
+        entity:set_attach(player)
+        entity:native_set_detach()
+        local nativeAttached = entity:get_attach()
+        entity:remove()
+
+        if luaAttached == nil and nativeAttached == nil then return true, "Entity was detached with both Lua and native functions"
+        else return false, "Lua detached :"..tostring(luaAttached == nil).." Native detached: "..tostring(nativeAttached == nil)        end
     end
 })
