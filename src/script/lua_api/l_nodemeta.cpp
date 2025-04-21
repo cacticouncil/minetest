@@ -232,6 +232,13 @@ void NodeMetaRef::create(lua_State *L, v3s16 p, ServerEnvironment *env)
 	lua_setmetatable(L, -2);
 }
 
+// Does the same thing as the Lua function, but without Lua stuff
+NodeMetaRef *NodeMetaRef::native_create(v3s16 p, ServerEnvironment *env)
+{
+	NodeMetaRef *o = new NodeMetaRef(p, env);
+	return o;
+}
+
 // Client-sided version of the above
 void NodeMetaRef::createClient(lua_State *L, Metadata *meta)
 {

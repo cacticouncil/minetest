@@ -89,7 +89,8 @@ public:
 	// Creates an NodeMetaRef and leaves it on top of stack
 	// Not callable from Lua; all references are created on the C side.
 	static void create(lua_State *L, v3s16 p, ServerEnvironment *env);
-
+	//only modifies engine state without modifying lua state
+	static NodeMetaRef *NodeMetaRef::native_create(v3s16 p, ServerEnvironment *env);
 	// Client-sided version of the above
 	static void createClient(lua_State *L, Metadata *meta);
 

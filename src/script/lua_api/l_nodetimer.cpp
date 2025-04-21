@@ -103,6 +103,12 @@ void NodeTimerRef::create(lua_State *L, v3s16 p, ServerMap *map)
 	lua_setmetatable(L, -2);
 }
 
+NodeTimerRef* NodeTimerRef::native_create(v3s16 p, ServerMap *map)
+{
+	NodeTimerRef *o = new NodeTimerRef(p, map);
+	return o;
+}
+
 void NodeTimerRef::Register(lua_State *L)
 {
 	lua_newtable(L);

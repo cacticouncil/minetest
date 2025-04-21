@@ -207,6 +207,18 @@ int LuaRaycast::create_object(lua_State *L)
 	return 1;
 }
 
+//overloaded function gets object data from preexisting raycast state returned with native function
+int LuaRaycast::create_object(lua_State *L, RaycastState& rs)
+{
+	NO_MAP_LOCK_REQUIRED;
+	LuaRaycast *o = new LuaRaycast(rs.m_shootline, rs.m_objects_pointable, rs.m_liquids_pointable);
+
+	*(void **)(lua_newuserdata(L, sizeof(void *))) = o;
+	luaL_getmetatable(L, className);
+	lua_setmetatable(L, -2);
+	return 1;
+}
+
 LuaRaycast *LuaRaycast::checkobject(lua_State *L, int narg)
 {
 	NO_MAP_LOCK_REQUIRED;
@@ -898,7 +910,10 @@ int ModApiEnvMod::l_native_get_meta(lua_State *L)
 
 	// Do it
 	v3s16 p = read_v3s16(L, 1);
-	NodeMetaRef::create(L, p, env);
+	NodeMetaRef *o = NativeModApiEnv::n_get_meta(env, p);
+	*(void **)(lua_newuserdata(L, sizeof(void *))) = o;
+	luaL_getmetatable(L, "NodeMetaRef");
+	lua_setmetatable(L, -2);
 	return 1;
 }
 
@@ -919,7 +934,10 @@ int ModApiEnvMod::l_native_get_node_timer(lua_State *L)
 
 	// Do it
 	v3s16 p = read_v3s16(L, 1);
-	NodeTimerRef::create(L, p, &env->getServerMap());
+	NodeTimerRef *o = NativeModApiEnv::n_get_node_timer(p, &env->getServerMap());
+	*(void **)(lua_newuserdata(L, sizeof(void *))) = o;
+	luaL_getmetatable(L, "NodeTimerRef");
+	lua_setmetatable(L, -2);
 	return 1;
 }
 
@@ -1003,9 +1021,6 @@ int ModApiEnvMod::l_native_add_item(lua_State *L)
 {
 	GET_ENV_PTR;
 
-	// pos
-	// v3f pos = checkFloatPos(L, 1);
-	// item
 	ItemStack item = read_item(L, 2, getServer(L)->idef());
 	if (item.empty() || !item.isKnown(getServer(L)->idef()))
 		return 0;
@@ -1933,7 +1948,20 @@ int ModApiEnvMod::l_raycast(lua_State *L)
 
 int ModApiEnvMod::l_native_raycast(lua_State* L)
 {
-	return LuaRaycast::create_object(L);
+	bool objects = true;
+	bool liquids = false;
+
+	v3f pos1 = checkFloatPos(L, 1);
+	v3f pos2 = checkFloatPos(L, 2);
+	if (lua_isboolean(L, 3)) {
+		objects = readParam<bool>(L, 3);
+	}
+	if (lua_isboolean(L, 4)) {
+		liquids = readParam<bool>(L, 4);
+	}
+
+	RaycastState rs = NativeModApiEnv::n_raycast(pos1, pos2, objects, liquids);
+	return LuaRaycast::create_object(L, rs);
 }
 
 

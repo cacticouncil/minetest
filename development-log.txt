@@ -9,6 +9,7 @@ Completed every server.cpp test except for notify_authentication_modified - 3 hr
 Completed notify_authentication_modified - 1 hr 21 min
 Started server.cpp up to punch - 2 hr
 Skipped punch and wrote server.cpp tests up to test_get_inventory - 25 min
-Finished punch, fixed mapgen test, and wrote server.cpp tests up to test_get_local_animation - 2 hr 30 min
+Finished punch, fixed mapgen test, and wrote server.cpp testsup to test_get_local_animation - 2 hr 30 min
 Wrote server.cpp tests up to send_mapblock - 1 hr 5 min
 Rewrote all env.cpp functions with discrete Lua and native components - 7 hr
+Split Lua and native functionality for each function except additem - 1 hr

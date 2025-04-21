@@ -61,6 +61,7 @@ public:
 	// Creates an NodeTimerRef and leaves it on top of stack
 	// Not callable from Lua; all references are created on the C side.
 	static void create(lua_State *L, v3s16 p, ServerMap *map);
-
+	//Makes same engine changes but does not require Lua state
+	static NodeTimerRef* native_create(v3s16 p, ServerMap *map);
 	static void Register(lua_State *L);
 };

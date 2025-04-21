@@ -481,6 +481,7 @@ public:
 
 	//! Creates a LuaRaycast and leaves it on top of the stack.
 	static int create_object(lua_State *L);
+	static int create_object(lua_State *L, RaycastState& rs);
 
 	/*!
 	 * Returns the Raycast from the stack or throws an error.
