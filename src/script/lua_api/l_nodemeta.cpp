@@ -233,7 +233,7 @@ void NodeMetaRef::create(lua_State *L, v3s16 p, ServerEnvironment *env)
 }
 
 // Does the same thing as the Lua function, but without Lua stuff
-NodeMetaRef *NodeMetaRef::native_create(v3s16 p, ServerEnvironment *env)
+NodeMetaRef* NodeMetaRef::native_create(v3s16 p, ServerEnvironment *env)
 {
 	NodeMetaRef *o = new NodeMetaRef(p, env);
 	return o;

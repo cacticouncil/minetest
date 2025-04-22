@@ -13,3 +13,4 @@ Finished punch, fixed mapgen test, and wrote server.cpp testsup to test_get_loca
 Wrote server.cpp tests up to send_mapblock - 1 hr 5 min
 Rewrote all env.cpp functions with discrete Lua and native components - 7 hr
 Split Lua and native functionality for each function except additem - 1 hr
+Full completed server.cpp - 1 hr 30 min

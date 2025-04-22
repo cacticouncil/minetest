@@ -44,7 +44,7 @@ with this program; if not, write to the Free Software Foundation, Inc.,
 #include "translation.h"
 #ifndef SERVER
 #include "client/client.h"
-
+#include "native_api/native_item.h"
 #include "native_api/native_env.h"
 #endif
 
@@ -1021,8 +1021,55 @@ int ModApiEnvMod::l_native_add_item(lua_State *L)
 {
 	GET_ENV_PTR;
 
-	ItemStack item = read_item(L, 2, getServer(L)->idef());
-	if (item.empty() || !item.isKnown(getServer(L)->idef()))
+	//read item
+	ItemStack stack;
+	IItemDefManager* idef = getServer(L)->idef();
+	int index = 2;
+	if (lua_isnil(L, index)) {
+		stack = NativeModApiEnv::n_add_item();
+	}
+	if (lua_isuserdata(L, index)) {
+		// Convert from LuaItemStack
+		LuaItemStack *o = LuaItemStack::checkobject(L, index);
+		//stack = NativeModApiEnv::n_add_item(o);
+	}
+
+	if (lua_isstring(L, index)) {
+		// Convert from itemstring
+		std::string itemstring = lua_tostring(L, index);
+		stack = NativeModApiEnv::n_add_item(itemstring, idef);
+	} else if (lua_istable(L, index)) {
+		// Convert from table
+		std::string name = getstringfield_default(L, index, "name", "");
+		int count = getintfield_default(L, index, "count", 1);
+		int wear = getintfield_default(L, index, "wear", 0);
+
+		// BACKWARDS COMPATIBLITY
+		std::string defaultName = getstringfield_default(L, index, "metadata", "");
+
+		std::vector<std::pair<std::string, std::string>> meta;
+
+		// Get meta
+		lua_getfield(L, index, "meta");
+		int fieldstable = lua_gettop(L);
+		if (lua_istable(L, fieldstable)) {
+			lua_pushnil(L);
+			while (lua_next(L, fieldstable) != 0) {
+				// key at index -2 and value at index -1
+				std::string key = lua_tostring(L, -2);
+				size_t value_len;
+				const char *value_cs = lua_tolstring(L, -1, &value_len);
+				std::string value(value_cs, value_len);
+				meta.push_back(std::make_pair(key, value));
+				lua_pop(L, 1); // removes value, keeps key for next
+					       // iteration
+			}
+		}
+
+		stack = NativeModApiEnv::n_add_item(name, count, wear, meta, defaultName, idef);
+	}
+
+	if (stack.empty() || !stack.isKnown(getServer(L)->idef()))
 		return 0;
 
 	int error_handler = PUSH_ERROR_HANDLER(L);
@@ -1034,7 +1081,7 @@ int ModApiEnvMod::l_native_add_item(lua_State *L)
 	if (lua_isnil(L, -1))
 		return 0;
 	lua_pushvalue(L, 1);
-	lua_pushstring(L, item.getItemString().c_str());
+	lua_pushstring(L, stack.getItemString().c_str());
 
 	PCALL_RESL(L, lua_pcall(L, 2, 1, error_handler));
 
